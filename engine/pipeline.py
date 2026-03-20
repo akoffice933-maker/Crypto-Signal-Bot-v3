@@ -15,7 +15,8 @@ Order of operations:
 """
 
 import logging
-from typing import Optional
+from datetime import datetime, timezone
+from typing import Optional, Dict, List
 
 from data.binance_client import BinanceFuturesClient
 from data.orderflow_ws import OrderFlowWebSocket
@@ -30,6 +31,7 @@ from strategies.breakout import signal_to_dict as breakout_to_dict
 from strategies.sweep_reversal import check_sweep_reversal
 from strategies.sweep_reversal import signal_to_dict as sweep_to_dict
 from config.settings import settings
+from engine.logger import log_analysis_summary, log_liquidity_levels
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +46,11 @@ async def run_pipeline(
     Full analysis cycle.
     Returns the signal dict if one was sent, else None.
     """
+    
+    cycle_time = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    logger.info(f"\n{'='*60}")
+    logger.info(f"ANALYSIS CYCLE START — {cycle_time}")
+    logger.info(f"{'='*60}")
 
     # ── 1. Load candles ───────────────────────────────────────
     try:
@@ -58,22 +65,39 @@ async def run_pipeline(
     df_4h  = candles["4h"]
     df_1d  = candles["1d"]
     current_price = float(df_15m["close"].iloc[-1])
+    
+    logger.info(f"📊 Loaded candles: 15m={len(df_15m)}, 4h={len(df_4h)}, 1d={len(df_1d)}")
+    logger.info(f"💰 Current price: ${current_price:,.2f}")
 
     # ── 2. Market State ───────────────────────────────────────
     ctx = get_market_context(df_15m)
-    logger.info(str(ctx))
+    logger.info(f"\n📈 Market State:")
+    logger.info(f"  • ADX: {ctx.adx_value:.1f} ({ctx.market_state})")
+    logger.info(f"  • ATR%: {ctx.atr_pct*100:.2f}% ({ctx.volatility_regime})")
+    logger.info(f"  • Session: {ctx.session if ctx.session else 'None (off-hours)'}")
+    logger.info(f"  • Tradeable: {ctx.tradeable}")
 
     if not ctx.tradeable:
-        logger.info(f"Not tradeable: {ctx.market_state}, vol={ctx.volatility_regime}, "
-                    f"session={ctx.session}")
+        blockers = []
+        if ctx.market_state == "dead_zone":
+            blockers.append("ADX dead zone (20-25) [-25]")
+        if ctx.volatility_regime == "low":
+            blockers.append("Low volatility (<0.7%) [-30]")
+        if not ctx.session:
+            blockers.append("Off-hours (no session) [-30]")
+        
+        logger.info(f"\n❌ SKIP: Market not tradeable")
+        logger.info(f"  Blockers: {', '.join(blockers)}")
         return None
 
     # ── 3. Liquidity Map ──────────────────────────────────────
     levels = build_liquidity_map(df_1d, df_4h, current_price)
-    logger.info(f"Liquidity map: {len(levels)} levels")
+    logger.info(f"\n🎯 Liquidity Levels: {len(levels)} found")
+    log_liquidity_levels(levels)
 
     # ── 4. Squeeze ────────────────────────────────────────────
     squeeze_active = is_squeeze(df_4h)
+    logger.info(f"\n📊 Squeeze Detector (4H): {'ACTIVE ✅' if squeeze_active else 'inactive ❌'}")
 
     # ── 5. Order Flow ─────────────────────────────────────────
     # Funding rate
@@ -93,12 +117,17 @@ async def run_pipeline(
         cascade, oi_chg_pct = evaluate_oi_cascade(
             oi_now, oi_60m, current_price, price_60m
         )
+        logger.info(f"\n📊 Order Flow:")
+        logger.info(f"  • Funding rate: {funding_rate*100:.3f}%")
+        logger.info(f"  • OI change (60m): {oi_chg_pct:.2f}% if oi_chg_pct else 'N/A'}")
+        logger.info(f"  • OI Cascade: {'Yes ✅' if cascade else 'No ❌'}")
     except Exception as e:
         logger.warning(f"OI fetch failed: {e}")
         cascade, oi_chg_pct = False, None
 
     # CVD from WebSocket
     cvd_div = ws.cvd_divergence() if ws.is_connected else None
+    logger.info(f"  • CVD divergence: {cvd_div if cvd_div else 'None'}")
 
     # ── 6. Sweep Reversal ─────────────────────────────────────
     signal_dict = None
@@ -159,25 +188,43 @@ async def run_pipeline(
                 liquidation_cascade=cascade,
             )
             logger.info(
-                f"Breakout signal: {bo_sig.direction} "
+                f"\n📈 Breakout signal: {bo_sig.direction} "
                 f"entry={bo_sig.entry_market} conf={bo_sig.confidence.score}"
             )
 
+    # ── No signal found ───────────────────────────────────────
     if signal_dict is None:
-        logger.debug("No signal this cycle")
+        logger.info(f"\n❌ No signal this cycle")
+        logger.info(f"  Reasons:")
+        logger.info(f"    • No sweep reversal pattern detected")
+        if not squeeze_active:
+            logger.info(f"    • No squeeze active (4H)")
+        logger.info(f"{'='*60}\n")
         return None
 
     # ── 8. Cooldown check ─────────────────────────────────────
     sig_id = signal_dict["signal_id"]
     if await db.is_on_cooldown(sig_id):
-        logger.info(f"Signal {sig_id} on cooldown — skipping")
+        logger.info(f"\n⏰ Signal {sig_id[:8]}... on cooldown (60 min) — skipping")
         return None
 
     # ── 9. Persist + notify ───────────────────────────────────
     await db.save_signal(signal_dict)
     await db.set_cooldown(sig_id, minutes=60)
 
+    logger.info(f"\n✅ SIGNAL FOUND!")
+    logger.info(f"  Strategy: {signal_dict['strategy']}")
+    logger.info(f"  Direction: {signal_dict['direction']}")
+    logger.info(f"  Entry: ${signal_dict['entry_market']:.2f}")
+    logger.info(f"  SL: ${signal_dict['stop_loss']:.2f}")
+    logger.info(f"  TP: ${signal_dict['take_profit']:.2f}")
+    logger.info(f"  RR: {signal_dict['rr_ratio']:.2f}")
+    logger.info(f"  Confidence: {signal_dict['confidence_score']}%")
+    
     if notifier:
         await notifier.send_signal(signal_dict)
+        logger.info(f"  📱 Sent to Telegram")
 
+    logger.info(f"{'='*60}\n")
+    
     return signal_dict
