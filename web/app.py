@@ -1,0 +1,58 @@
+from contextlib import asynccontextmanager
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, RedirectResponse, Response
+from web.assets import FAVICON_ICO
+from web.routes.health import router as health_router
+from web.routes.logs import router as logs_router
+from web.routes.metrics import router as metrics_router
+from web.routes.signals import router as signals_router
+from web.routes.ui import router as ui_router
+from web.routes.settings import router as settings_router
+from web.routes.settings_api import router as settings_api_router
+from web.routes.backtest import router as backtest_router
+from web.routes.backtest_api import router as backtest_api_router
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    yield
+
+
+app = FastAPI(
+    title="Crypto Signal Bot v3",
+    version="3.0.0",
+    lifespan=lifespan,
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["*"],
+)
+
+app.include_router(health_router)
+app.include_router(logs_router)
+app.include_router(metrics_router)
+app.include_router(signals_router)
+app.include_router(ui_router)
+app.include_router(settings_router)
+app.include_router(settings_api_router, prefix="/signals")
+app.include_router(backtest_router)
+app.include_router(backtest_api_router)
+
+
+@app.get("/")
+async def root():
+    return RedirectResponse(url="/dashboard", status_code=307)
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    return Response(content=FAVICON_ICO, media_type="image/x-icon")
+
+
+@app.get("/.well-known/appspecific/com.chrome.devtools.json", include_in_schema=False)
+async def chrome_devtools_manifest():
+    return JSONResponse(content={})

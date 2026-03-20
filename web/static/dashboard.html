@@ -1,0 +1,590 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Crypto Signal Bot Dashboard</title>
+  <style>
+    :root {
+      --bg: #f4efe6;
+      --card: rgba(255, 252, 246, 0.84);
+      --ink: #1e1f1c;
+      --muted: #5c6258;
+      --line: rgba(30, 31, 28, 0.12);
+      --accent: #d96c3d;
+      --accent-2: #1f6a5a;
+      --danger: #8f2d2d;
+      --shadow: 0 18px 60px rgba(45, 34, 24, 0.12);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Bahnschrift", "Trebuchet MS", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(217, 108, 61, 0.18), transparent 28%),
+        radial-gradient(circle at bottom right, rgba(31, 106, 90, 0.16), transparent 24%),
+        linear-gradient(135deg, #ede3d2 0%, #f7f3ec 100%);
+    }
+    .shell {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 32px 20px 56px;
+    }
+    nav {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 32px;
+      flex-wrap: wrap;
+    }
+    nav a {
+      padding: 10px 18px;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--ink);
+      text-decoration: none;
+      backdrop-filter: blur(10px);
+      transition: all 0.2s;
+    }
+    nav a:hover, nav a.active {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+    .hero {
+      display: grid;
+      gap: 16px;
+      margin-bottom: 28px;
+    }
+    .eyebrow {
+      font: 700 12px/1.2 "Consolas", monospace;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--accent-2);
+    }
+    h1 {
+      margin: 0;
+      font-size: clamp(2rem, 4vw, 4rem);
+      line-height: 0.95;
+      max-width: 10ch;
+    }
+    .lede {
+      max-width: 58ch;
+      color: var(--muted);
+      font-size: 1.02rem;
+      line-height: 1.6;
+    }
+    .grid {
+      display: grid;
+      gap: 18px;
+      grid-template-columns: repeat(12, 1fr);
+    }
+    .card {
+      background: var(--card);
+      backdrop-filter: blur(10px);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      box-shadow: var(--shadow);
+      padding: 20px;
+    }
+    .metric {
+      grid-column: span 3;
+      min-height: 160px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+    .metric .value {
+      font-size: 2.2rem;
+      font-weight: 700;
+    }
+    .metric .label {
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-size: 0.76rem;
+    }
+    .panel {
+      grid-column: span 6;
+    }
+    .summary-panel {
+      grid-column: span 6;
+    }
+    .summary-grid {
+      display: grid;
+      gap: 12px;
+    }
+    .summary-row {
+      display: grid;
+      gap: 6px;
+      padding: 12px 14px;
+      border-radius: 16px;
+      background: rgba(255,255,255,0.62);
+      border: 1px solid var(--line);
+    }
+    .summary-key {
+      color: var(--muted);
+      font: 700 0.74rem/1 "Consolas", monospace;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .summary-value {
+      font-size: 1.05rem;
+      font-weight: 700;
+    }
+    .summary-value.ok {
+      color: var(--accent-2);
+    }
+    .summary-value.bad {
+      color: var(--danger);
+    }
+    .summary-value.warn {
+      color: #b86f1b;
+    }
+    .table-panel {
+      grid-column: span 12;
+      overflow: auto;
+    }
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    button, select, input {
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      padding: 10px 14px;
+      background: rgba(255,255,255,0.76);
+      color: var(--ink);
+      font: inherit;
+    }
+    button {
+      background: var(--ink);
+      color: #fff7ef;
+      cursor: pointer;
+    }
+    button.alt {
+      background: var(--accent-2);
+    }
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border-radius: 999px;
+      padding: 8px 12px;
+      background: rgba(31, 106, 90, 0.08);
+      color: var(--accent-2);
+      font: 700 0.78rem/1 "Consolas", monospace;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    .status.bad {
+      background: rgba(143, 45, 45, 0.08);
+      color: var(--danger);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 780px;
+    }
+    th, td {
+      text-align: left;
+      padding: 12px 8px;
+      border-bottom: 1px solid var(--line);
+      font-size: 0.95rem;
+    }
+    th {
+      color: var(--muted);
+      font: 700 0.78rem/1 "Consolas", monospace;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .mono { font-family: "Consolas", monospace; }
+    .muted { color: var(--muted); }
+    .error {
+      margin-top: 12px;
+      color: var(--danger);
+      white-space: pre-wrap;
+    }
+    .log-panel {
+      grid-column: span 12;
+    }
+    .tabbar {
+      display: inline-flex;
+      border-radius: 999px;
+      padding: 4px;
+      background: rgba(30, 31, 28, 0.08);
+      gap: 4px;
+    }
+    .tabbar button {
+      background: transparent;
+      color: var(--ink);
+      border: none;
+      padding: 10px 14px;
+    }
+    .tabbar button.active {
+      background: var(--ink);
+      color: #fff7ef;
+    }
+    .toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border-radius: 999px;
+      padding: 8px 12px;
+      background: rgba(255,255,255,0.76);
+      border: 1px solid var(--line);
+      color: var(--ink);
+      font: 700 0.76rem/1 "Consolas", monospace;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .toggle input {
+      margin: 0;
+      accent-color: var(--accent-2);
+    }
+    .log-box {
+      min-height: 280px;
+      max-height: 420px;
+      overflow: auto;
+      border-radius: 18px;
+      padding: 16px;
+      background: rgba(30, 31, 28, 0.92);
+      color: #f3eee5;
+      border: 1px solid rgba(255,255,255,0.06);
+      font: 0.84rem/1.55 "Consolas", monospace;
+      white-space: pre-wrap;
+    }
+    .log-line {
+      display: block;
+      white-space: pre-wrap;
+    }
+    .log-line.signal {
+      color: #9ee493;
+    }
+    .log-line.blocked {
+      color: #ff8f8f;
+    }
+    .log-line.candidate {
+      color: #ffc36b;
+    }
+    @media (max-width: 900px) {
+      .metric, .panel, .table-panel { grid-column: span 12; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <nav>
+      <a href="/dashboard" class="active">Dashboard</a>
+      <a href="/signals/">Signals</a>
+      <a href="/logs">Logs</a>
+      <a href="/settings">Settings</a>
+      <a href="/backtest">Backtest</a>
+    </nav>
+  
+    <section class="hero">
+      <div class="eyebrow">Operational Console</div>
+      <h1>Signal flow with enough context to act.</h1>
+      <div class="lede">This dashboard reads the live FastAPI surface exposed by the bot. It shows 24h health metrics, recent signals, export actions and sync to Google Sheets through an Apps Script webhook.</div>
+    </section>
+
+    <section class="grid">
+      <article class="card metric">
+        <div class="label">Health</div>
+        <div class="value" id="health-status">...</div>
+        <div class="muted" id="health-detail">loading</div>
+      </article>
+      <article class="card metric">
+        <div class="label">Signals / 24h</div>
+        <div class="value" id="signals24">0</div>
+        <div class="muted">Prometheus + health snapshot</div>
+      </article>
+      <article class="card metric">
+        <div class="label">Winrate / 24h</div>
+        <div class="value" id="winrate24">0%</div>
+        <div class="muted">Closed trades only</div>
+      </article>
+      <article class="card metric">
+        <div class="label">Avg Drawdown</div>
+        <div class="value" id="drawdown24">0%</div>
+        <div class="muted">Average loss magnitude over 24h</div>
+      </article>
+
+      <article class="card panel">
+        <div class="toolbar">
+          <span class="status" id="db-status">db unknown</span>
+          <button id="refresh-btn">Refresh</button>
+          <button id="csv-btn" class="alt">Export CSV</button>
+        </div>
+        <div class="muted mono" id="metrics-raw">/metrics loading...</div>
+      </article>
+
+      <article class="card panel">
+        <div class="toolbar">
+          <input id="sheet-webhook" placeholder="Apps Script webhook URL">
+          <button id="sync-btn">Sync Sheets</button>
+        </div>
+        <div class="muted">Use a deployed Google Apps Script web app that accepts JSON and appends rows to a sheet.</div>
+        <div class="error" id="sync-result"></div>
+      </article>
+
+      <article class="card summary-panel">
+        <div class="toolbar">
+          <span class="status">Current Cycle Summary</span>
+        </div>
+        <div class="summary-grid">
+          <div class="summary-row">
+            <div class="summary-key">Tradeability</div>
+            <div class="summary-value" id="cycle-tradeable">loading...</div>
+          </div>
+          <div class="summary-row">
+            <div class="summary-key">Blocking Reason</div>
+            <div class="summary-value" id="cycle-reason">loading...</div>
+          </div>
+          <div class="summary-row">
+            <div class="summary-key">Signal State</div>
+            <div class="summary-value" id="cycle-signal">loading...</div>
+          </div>
+        </div>
+      </article>
+
+      <article class="card table-panel">
+        <div class="toolbar">
+          <select id="strategy-filter">
+            <option value="">All strategies</option>
+            <option value="sweep_reversal">Sweep reversal</option>
+            <option value="breakout">Breakout</option>
+          </select>
+          <select id="direction-filter">
+            <option value="">All directions</option>
+            <option value="LONG">LONG</option>
+            <option value="SHORT">SHORT</option>
+          </select>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Created</th>
+              <th>Strategy</th>
+              <th>Direction</th>
+              <th>Entry</th>
+              <th>TP</th>
+              <th>RR</th>
+              <th>Confidence</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="signals-body"></tbody>
+        </table>
+      </article>
+
+      <article class="card log-panel">
+        <div class="toolbar">
+          <span class="status" id="log-status">logs</span>
+          <div class="tabbar">
+            <button id="tab-important" class="active">Important Events</button>
+            <button id="tab-live">Live Log</button>
+          </div>
+          <label class="toggle">
+            <input type="checkbox" id="last-cycle-toggle">
+            Last Cycle
+          </label>
+        </div>
+        <div class="log-box" id="log-lines">Loading logs...</div>
+      </article>
+    </section>
+  </div>
+
+  <script>
+    const state = {
+      health: null,
+      signals: [],
+      metrics: "",
+      logs: [],
+      importantLogs: [],
+      cycleSummary: null,
+      activeLogTab: "important",
+      lastCycleOnly: true,
+    };
+
+    async function fetchJson(url) {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+      return response.json();
+    }
+
+    async function refresh() {
+      const strategy = document.getElementById("strategy-filter").value;
+      const direction = document.getElementById("direction-filter").value;
+      const query = new URLSearchParams({ limit: "20" });
+      if (strategy) query.set("strategy", strategy);
+      if (direction) query.set("direction", direction);
+
+      const [health, signals, metricsResp, cycleSummary] = await Promise.all([
+        fetchJson("/health"),
+        fetchJson(`/signals/?${query.toString()}`),
+        fetch("/metrics"),
+        fetchJson("/logs/summary"),
+      ]);
+      state.health = health;
+      state.signals = signals;
+      state.metrics = await metricsResp.text();
+      state.cycleSummary = cycleSummary;
+      await refreshLogs();
+      render();
+    }
+
+    async function refreshLogs() {
+      const params = state.lastCycleOnly ? "&last_cycle_only=true" : "";
+      const [logs, importantLogs] = await Promise.all([
+        fetchJson(`/logs?limit=120${params}`),
+        fetchJson(`/logs?limit=120&important_only=true${params}`),
+      ]);
+      state.logs = logs.lines || [];
+      state.importantLogs = importantLogs.lines || [];
+      renderLogs();
+    }
+
+    function render() {
+      const metrics = state.health?.metrics || {};
+      const status = state.health?.status || "unknown";
+      document.getElementById("health-status").textContent = status;
+      document.getElementById("health-detail").textContent = state.health?.timestamp || "no timestamp";
+      document.getElementById("signals24").textContent = metrics.signals_24h ?? 0;
+      document.getElementById("winrate24").textContent = `${metrics.winrate_24h ?? 0}%`;
+      document.getElementById("drawdown24").textContent = `${metrics.avg_drawdown_pct_24h ?? 0}%`;
+      document.getElementById("db-status").textContent = state.health?.components?.database?.status || "db unknown";
+      document.getElementById("db-status").className = `status ${status !== "healthy" ? "bad" : ""}`;
+      document.getElementById("metrics-raw").textContent = state.metrics.trim();
+      renderCycleSummary();
+      const tbody = document.getElementById("signals-body");
+      tbody.innerHTML = "";
+      for (const row of state.signals) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td class="mono">${row.created_at}</td>
+          <td>${row.strategy}</td>
+          <td>${row.direction}</td>
+          <td>${Number(row.entry_market).toFixed(2)}</td>
+          <td>${Number(row.take_profit).toFixed(2)}</td>
+          <td>${Number(row.rr_ratio).toFixed(2)}</td>
+          <td>${row.confidence_score}</td>
+          <td>${row.status}</td>
+        `;
+        tbody.appendChild(tr);
+      }
+      renderLogs();
+    }
+
+    function renderCycleSummary() {
+      const summary = state.cycleSummary || {};
+      const tradeable = document.getElementById("cycle-tradeable");
+      const reason = document.getElementById("cycle-reason");
+      const signal = document.getElementById("cycle-signal");
+
+      tradeable.textContent = summary.tradeable || "unknown";
+      tradeable.className = `summary-value ${summary.tradeable === "tradeable" ? "ok" : "bad"}`;
+
+      reason.textContent = summary.blocking_reason || "none";
+      reason.className = `summary-value ${summary.blocking_reason ? "bad" : "ok"}`;
+
+      signal.textContent = summary.signal_state || "none";
+      signal.className = `summary-value ${
+        summary.signal_state === "final signal"
+          ? "ok"
+          : summary.signal_state === "candidate"
+            ? "warn"
+            : ""
+      }`;
+    }
+
+    function renderLogs() {
+      const isImportant = state.activeLogTab === "important";
+      const lines = isImportant ? state.importantLogs : state.logs;
+      document.getElementById("log-status").textContent = isImportant
+        ? `important ${state.importantLogs.length}`
+        : `live ${state.logs.length}`;
+      const logBox = document.getElementById("log-lines");
+      logBox.innerHTML = "";
+      if (!lines.length) {
+        logBox.textContent = "No matching log lines yet.";
+      } else {
+        for (const line of lines) {
+          const row = document.createElement("span");
+          row.className = `log-line ${classifyLogLine(line)}`;
+          row.textContent = line;
+          logBox.appendChild(row);
+        }
+      }
+      document.getElementById("tab-important").className = isImportant ? "active" : "";
+      document.getElementById("tab-live").className = isImportant ? "" : "active";
+      document.getElementById("last-cycle-toggle").checked = state.lastCycleOnly;
+    }
+
+    function classifyLogLine(line) {
+      if (line.includes("Signal:")) return "signal";
+      if (line.includes("Not tradeable")) return "blocked";
+      if (line.includes("Sweep signal") || line.includes("Breakout signal")) return "candidate";
+      return "";
+    }
+
+    async function exportCsv() {
+      const response = await fetch("/signals/export.csv?limit=200");
+      if (!response.ok) throw new Error("CSV export failed");
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "signals_export.csv";
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    async function syncSheets() {
+      const url = document.getElementById("sheet-webhook").value.trim();
+      const result = document.getElementById("sync-result");
+      result.textContent = "";
+      const response = await fetch("/signals/export/google-sheets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ webhook_url: url || null, limit: 200 }),
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        result.textContent = payload.detail || "Sync failed";
+        return;
+      }
+      result.textContent = `Sent ${payload.rows_sent} rows to Google Sheets webhook.`;
+    }
+
+    document.getElementById("refresh-btn").addEventListener("click", () => refresh().catch(showError));
+    document.getElementById("csv-btn").addEventListener("click", () => exportCsv().catch(showError));
+    document.getElementById("sync-btn").addEventListener("click", () => syncSheets().catch(showError));
+    document.getElementById("strategy-filter").addEventListener("change", () => refresh().catch(showError));
+    document.getElementById("direction-filter").addEventListener("change", () => refresh().catch(showError));
+    document.getElementById("tab-important").addEventListener("click", () => {
+      state.activeLogTab = "important";
+      renderLogs();
+    });
+    document.getElementById("tab-live").addEventListener("click", () => {
+      state.activeLogTab = "live";
+      renderLogs();
+    });
+    document.getElementById("last-cycle-toggle").addEventListener("change", (event) => {
+      state.lastCycleOnly = event.target.checked;
+      refreshLogs().catch(showError);
+    });
+
+    function showError(error) {
+      document.getElementById("sync-result").textContent = error.message || String(error);
+    }
+
+    refresh().catch(showError);
+    setInterval(() => refreshLogs().catch(showError), 5000);
+  </script>
+</body>
+</html>

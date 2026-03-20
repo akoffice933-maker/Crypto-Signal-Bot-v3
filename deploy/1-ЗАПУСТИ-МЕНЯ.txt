@@ -1,0 +1,159 @@
+# 🚀 ЗАГРУЗКА НА VPS - ПОШАГОВАЯ ИНСТРУКЦИЯ
+
+## ✅ ВСЁ ГОТОВО! Осталось 3 шага:
+
+---
+
+## **ШАГ 1: Откройте PowerShell**
+
+1. Нажмите `Win + X`
+2. Выберите **Windows PowerShell (Admin)**
+3. Или найдите в поиске: `PowerShell` → Запуск от имени администратора
+
+---
+
+## **ШАГ 2: Запустите загрузку**
+
+**Выполните команду:**
+
+```powershell
+cd d:\bot_final\deploy
+.\upload-to-vps.ps1
+```
+
+**Если ошибка - разрешите скрипты:**
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+```
+
+**Затем снова:**
+```powershell
+.\upload-to-vps.ps1
+```
+
+---
+
+## **ШАГ 3: Подключитесь к VPS и запустите**
+
+**1. Откройте командную строку или PowerShell:**
+
+**2. Подключитесь к VPS:**
+```bash
+ssh root@148.222.186.16
+```
+
+**Введите пароль:** `6A0nZceRZE`
+*(пароль не отображается при вводе - это нормально)*
+
+**3. Запустите развёртывание:**
+```bash
+sudo bash /tmp/crypto-bot-source/deploy/deploy.sh
+```
+
+**4. Дождитесь завершения (2-3 минуты)**
+
+**5. Проверьте статус:**
+```bash
+systemctl status crypto-bot
+```
+
+**Должно быть:** `active (running)`
+
+---
+
+## ✅ **ПРОВЕРКА РАБОТЫ**
+
+### **1. Откройте Dashboard:**
+```
+http://148.222.186.16:8001/dashboard
+```
+
+### **2. Проверьте API:**
+```bash
+curl http://localhost:8001/health
+```
+
+### **3. Проверьте Telegram:**
+```
+Отправьте @Akoffice_bot: /start
+```
+
+---
+
+## 🆘 **ЕСЛИ ЧТО-ТО ПОШЛО НЕ ТАК**
+
+### **Ошибка в PowerShell:**
+```powershell
+# Разрешите скрипты
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+
+# Запустите снова
+cd d:\bot_final\deploy
+.\upload-to-vps.ps1
+```
+
+### **Не работает SSH:**
+```bash
+# Попробуйте с паролем
+ssh root@148.222.186.16
+# Введите: 6A0nZceRZE
+```
+
+### **Бот не запускается:**
+```bash
+# Перезапустите
+systemctl restart crypto-bot
+
+# Проверьте логи
+journalctl -u crypto-bot -f
+```
+
+---
+
+## 📞 **Я МОГУ ПОМОЧЬ!**
+
+Если что-то не работает, отправьте мне:
+
+1. **Скриншот ошибки**
+2. **Вывод команды:**
+   ```bash
+   systemctl status crypto-bot
+   ```
+
+**Я помогу решить проблему!** 🚀
+
+---
+
+## 🎉 **ГОТОВО!**
+
+**Ваш бот работает на VPS!**
+
+**Доступ:**
+- 🌐 Dashboard: `http://148.222.186.16:8001/dashboard`
+- 🔌 API: `http://148.222.186.16:8001/health`
+- 📱 Telegram: @Akoffice_bot
+- 📊 Канал: https://t.me/+urBYFrzObzU3Y2Ey
+
+**Бот работает в режиме REAL TRADING!**
+- TESTNET=false
+- Binance API ключи настроены
+- Telegram канал подключён
+
+---
+
+## 📝 **КОМАНДЫ УПРАВЛЕНИЯ**
+
+```bash
+# Статус
+systemctl status crypto-bot
+
+# Перезапуск
+systemctl restart crypto-bot
+
+# Остановка
+systemctl stop crypto-bot
+
+# Логи
+journalctl -u crypto-bot -f
+tail -f /opt/crypto-bot/logs/bot.log
+```

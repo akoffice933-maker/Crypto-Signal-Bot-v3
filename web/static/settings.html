@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Settings — Crypto Signal Bot</title>
+  <style>
+    :root {
+      --bg: #f4efe6;
+      --card: rgba(255, 252, 246, 0.84);
+      --ink: #1e1f1c;
+      --muted: #5c6258;
+      --line: rgba(30, 31, 28, 0.12);
+      --accent: #d96c3d;
+      --accent-2: #1f6a5a;
+      --danger: #8f2d2d;
+      --shadow: 0 18px 60px rgba(45, 34, 24, 0.12);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Bahnschrift", "Trebuchet MS", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(217, 108, 61, 0.18), transparent 28%),
+        radial-gradient(circle at bottom right, rgba(31, 106, 90, 0.16), transparent 24%),
+        linear-gradient(135deg, #ede3d2 0%, #f7f3ec 100%);
+    }
+    .shell {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 32px 20px 56px;
+    }
+    nav {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 32px;
+      flex-wrap: wrap;
+    }
+    nav a {
+      padding: 10px 18px;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--ink);
+      text-decoration: none;
+      backdrop-filter: blur(10px);
+      transition: all 0.2s;
+    }
+    nav a:hover, nav a.active {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+    .card {
+      background: var(--card);
+      backdrop-filter: blur(10px);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      box-shadow: var(--shadow);
+      padding: 28px;
+      margin-bottom: 20px;
+    }
+    h1 {
+      font-size: 2.2rem;
+      margin: 0 0 8px;
+    }
+    .muted { color: var(--muted); }
+    .setting-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      padding: 14px 0;
+      border-bottom: 1px solid var(--line);
+    }
+    .setting-row:last-child { border-bottom: none; }
+    .setting-label {
+      font-weight: 700;
+      color: var(--accent-2);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-size: 0.8rem;
+    }
+    .setting-value {
+      font-family: "Consolas", monospace;
+      font-size: 0.95rem;
+    }
+    .status-badge {
+      display: inline-block;
+      padding: 6px 12px;
+      border-radius: 999px;
+      font-size: 0.8rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    .status-badge.live { background: rgba(31, 106, 90, 0.15); color: var(--accent-2); }
+    .status-badge.testnet { background: rgba(217, 108, 61, 0.15); color: var(--accent); }
+    .btn {
+      padding: 12px 22px;
+      border-radius: 999px;
+      border: none;
+      background: var(--accent);
+      color: #fff;
+      font: inherit;
+      cursor: pointer;
+      margin-top: 16px;
+    }
+    .btn:hover { opacity: 0.9; }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <nav>
+      <a href="/dashboard">Dashboard</a>
+      <a href="/signals/">Signals</a>
+      <a href="/logs">Logs</a>
+      <a href="/settings" class="active">Settings</a>
+      <a href="/backtest">Backtest</a>
+    </nav>
+
+    <div class="card">
+      <h1>⚙️ Bot Settings</h1>
+      <p class="muted">Current configuration and runtime parameters</p>
+      
+      <div id="settings-content">Loading...</div>
+    </div>
+
+    <div class="card">
+      <h2>🔑 Environment</h2>
+      <div class="setting-row">
+        <div class="setting-label">Mode</div>
+        <div class="setting-value"><span id="mode-badge" class="status-badge">—</span></div>
+      </div>
+      <div class="setting-row">
+        <div class="setting-label">Symbol</div>
+        <div class="setting-value" id="symbol">—</div>
+      </div>
+      <div class="setting-row">
+        <div class="setting-label">Telegram Bot</div>
+        <div class="setting-value" id="telegram-bot">—</div>
+      </div>
+      <div class="setting-row">
+        <div class="setting-label">Database</div>
+        <div class="setting-value" id="db-path">—</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    async function loadSettings() {
+      try {
+        const [health, settingsResp] = await Promise.all([
+          fetch("/health"),
+          fetch("/signals/settings/data"),
+        ]);
+        
+        const healthData = await health.json();
+        const settingsData = await settingsResp.json();
+        
+        renderSettings(settingsData, healthData);
+      } catch (error) {
+        document.getElementById("settings-content").innerHTML = 
+          `<p style="color: var(--danger)">Error loading settings: ${error.message}</p>`;
+      }
+    }
+
+    function renderSettings(data, health) {
+      const mode = data.testnet ? "testnet" : "live";
+      const modeClass = mode === "live" ? "live" : "testnet";
+      
+      document.getElementById("mode-badge").className = `status-badge ${modeClass}`;
+      document.getElementById("mode-badge").textContent = mode.toUpperCase();
+      document.getElementById("symbol").textContent = data.symbol || "BTCUSDT";
+      document.getElementById("telegram-bot").textContent = data.telegram_bot_configured ? "✅ Configured" : "❌ Not configured";
+      document.getElementById("db-path").textContent = data.db_path || "data/signals.db";
+      
+      const dbStatus = health.components?.database?.status || "unknown";
+      const dbClass = dbStatus === "ok" ? "live" : "testnet";
+      
+      document.getElementById("settings-content").innerHTML = `
+        <div class="setting-row">
+          <div class="setting-label">Database Status</div>
+          <div class="setting-value"><span class="status-badge ${dbClass}">${dbStatus}</span></div>
+        </div>
+        <div class="setting-row">
+          <div class="setting-label">Latency</div>
+          <div class="setting-value">${health.components?.database?.latency_ms || 0} ms</div>
+        </div>
+        <div class="setting-row">
+          <div class="setting-label">Scheduler</div>
+          <div class="setting-value">Every 15 minutes</div>
+        </div>
+        <div class="setting-row">
+          <div class="setting-label">Confidence Threshold</div>
+          <div class="setting-value">${data.confidence_threshold || 65}%</div>
+        </div>
+        <div class="setting-row">
+          <div class="setting-label">Min R:R</div>
+          <div class="setting-value">${data.min_rr || 2.0}</div>
+        </div>
+      `;
+    }
+
+    loadSettings();
+  </script>
+</body>
+</html>

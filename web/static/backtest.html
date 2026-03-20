@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Backtest Results — Crypto Signal Bot</title>
+  <style>
+    :root {
+      --bg: #f4efe6;
+      --card: rgba(255, 252, 246, 0.84);
+      --ink: #1e1f1c;
+      --muted: #5c6258;
+      --line: rgba(30, 31, 28, 0.12);
+      --accent: #d96c3d;
+      --accent-2: #1f6a5a;
+      --danger: #8f2d2d;
+      --shadow: 0 18px 60px rgba(45, 34, 24, 0.12);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Bahnschrift", "Trebuchet MS", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(217, 108, 61, 0.18), transparent 28%),
+        radial-gradient(circle at bottom right, rgba(31, 106, 90, 0.16), transparent 24%),
+        linear-gradient(135deg, #ede3d2 0%, #f7f3ec 100%);
+    }
+    .shell {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 32px 20px 56px;
+    }
+    nav {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 32px;
+      flex-wrap: wrap;
+    }
+    nav a {
+      padding: 10px 18px;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--ink);
+      text-decoration: none;
+      backdrop-filter: blur(10px);
+      transition: all 0.2s;
+    }
+    nav a:hover, nav a.active {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+    .card {
+      background: var(--card);
+      backdrop-filter: blur(10px);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      box-shadow: var(--shadow);
+      padding: 28px;
+      margin-bottom: 20px;
+    }
+    h1 {
+      font-size: 2.2rem;
+      margin: 0 0 8px;
+    }
+    .muted { color: var(--muted); }
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 16px;
+      margin: 24px 0;
+    }
+    .metric-card {
+      background: rgba(255, 255, 255, 0.6);
+      border-radius: 16px;
+      padding: 18px;
+      text-align: center;
+    }
+    .metric-value {
+      font-size: 2rem;
+      font-weight: 700;
+      color: var(--accent);
+    }
+    .metric-label {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      margin-top: 6px;
+    }
+    .btn {
+      padding: 12px 22px;
+      border-radius: 999px;
+      border: none;
+      background: var(--accent);
+      color: #fff;
+      font: inherit;
+      cursor: pointer;
+      margin: 4px;
+    }
+    .btn:hover { opacity: 0.9; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 16px;
+    }
+    th, td {
+      text-align: left;
+      padding: 12px 8px;
+      border-bottom: 1px solid var(--line);
+      font-size: 0.9rem;
+    }
+    th {
+      color: var(--muted);
+      font: 700 0.78rem/1 "Consolas", monospace;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .win { color: var(--accent-2); }
+    .loss { color: var(--danger); }
+    .error-msg {
+      color: var(--danger);
+      padding: 16px;
+      background: rgba(143, 45, 45, 0.1);
+      border-radius: 12px;
+      margin: 16px 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <nav>
+      <a href="/dashboard">Dashboard</a>
+      <a href="/signals/">Signals</a>
+      <a href="/logs">Logs</a>
+      <a href="/settings">Settings</a>
+      <a href="/backtest" class="active">Backtest</a>
+    </nav>
+
+    <div class="card">
+      <h1>📊 Backtest Results</h1>
+      <p class="muted">Historical performance analysis</p>
+      
+      <div style="margin: 20px 0;">
+        <button class="btn" onclick="runBacktest()" id="run-btn">▶ Run Backtest</button>
+        <button class="btn" onclick="loadResults()" id="load-btn">📥 Load Results</button>
+      </div>
+      
+      <div id="backtest-status"></div>
+    </div>
+
+    <div class="card" id="metrics-card" style="display: none;">
+      <h2>Performance Metrics</h2>
+      <div class="metrics-grid">
+        <div class="metric-card">
+          <div class="metric-value" id="total-trades">—</div>
+          <div class="metric-label">Total Trades</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-value" id="winrate">—</div>
+          <div class="metric-label">Win Rate (%)</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-value" id="profit-factor">—</div>
+          <div class="metric-label">Profit Factor</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-value" id="max-drawdown">—</div>
+          <div class="metric-label">Max Drawdown (%)</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-value" id="total-return">—</div>
+          <div class="metric-label">Total Return (%)</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-value" id="avg-rr">—</div>
+          <div class="metric-label">Avg R:R</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" id="trades-card" style="display: none;">
+      <h2>Recent Trades</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Direction</th>
+            <th>Entry</th>
+            <th>Exit</th>
+            <th>PnL (%)</th>
+            <th>PnL ($)</th>
+            <th>R:R</th>
+            <th>Exit Reason</th>
+          </tr>
+        </thead>
+        <tbody id="trades-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    async function runBacktest() {
+      const btn = document.getElementById("run-btn");
+      const status = document.getElementById("backtest-status");
+      
+      btn.disabled = true;
+      status.innerHTML = '<p>Running backtest... This may take a few minutes.</p>';
+      
+      try {
+        const response = await fetch("/backtest/run", { method: "POST" });
+        const result = await response.json();
+        
+        if (response.ok) {
+          status.innerHTML = `<p style="color: var(--accent-2)">✅ Backtest completed! ${result.message || ""}</p>`;
+          loadResults();
+        } else {
+          status.innerHTML = `<div class="error-msg">❌ Error: ${result.detail || "Unknown error"}</div>`;
+        }
+      } catch (error) {
+        status.innerHTML = `<div class="error-msg">❌ Error: ${error.message}</div>`;
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    async function loadResults() {
+      try {
+        const response = await fetch("/backtest/results");
+        const data = await response.json();
+        
+        if (data.error) {
+          document.getElementById("metrics-card").style.display = "none";
+          document.getElementById("trades-card").style.display = "none";
+          document.getElementById("backtest-status").innerHTML = 
+            '<p class="muted">No backtest results found. Run a backtest first.</p>';
+          return;
+        }
+        
+        renderMetrics(data);
+        renderTrades(data.trades || []);
+        
+        document.getElementById("metrics-card").style.display = "block";
+        document.getElementById("trades-card").style.display = "block";
+      } catch (error) {
+        console.error("Error loading results:", error);
+      }
+    }
+
+    function renderMetrics(data) {
+      document.getElementById("total-trades").textContent = data.total_trades || 0;
+      document.getElementById("winrate").textContent = (data.winrate_pct || 0).toFixed(1) + "%";
+      document.getElementById("profit-factor").textContent = data.profit_factor || "∞";
+      document.getElementById("max-drawdown").textContent = (data.max_drawdown_pct || 0).toFixed(2) + "%";
+      document.getElementById("total-return").textContent = (data.total_return_pct || 0).toFixed(2) + "%";
+      document.getElementById("avg-rr").textContent = data.avg_rr || 0;
+    }
+
+    function renderTrades(trades) {
+      const tbody = document.getElementById("trades-body");
+      tbody.innerHTML = "";
+      
+      const recentTrades = trades.slice(-20).reverse();
+      
+      for (const trade of recentTrades) {
+        const tr = document.createElement("tr");
+        const pnlClass = trade.pnl_pct >= 0 ? "win" : "loss";
+        const direction = trade.direction === "LONG" ? "🟢 LONG" : "🔴 SHORT";
+        
+        tr.innerHTML = `
+          <td>${trade.entry_date}</td>
+          <td>${direction}</td>
+          <td>${trade.entry_price.toFixed(2)}</td>
+          <td>${trade.exit_price.toFixed(2)}</td>
+          <td class="${pnlClass}">${trade.pnl_pct >= 0 ? "+" : ""}${trade.pnl_pct.toFixed(2)}%</td>
+          <td class="${pnlClass}">${trade.pnl_net >= 0 ? "+" : ""}${trade.pnl_net.toFixed(2)}</td>
+          <td>${trade.rr_achieved.toFixed(2)}</td>
+          <td>${trade.exit_reason}</td>
+        `;
+        tbody.appendChild(tr);
+      }
+    }
+
+    // Load results on page load
+    loadResults();
+  </script>
+</body>
+</html>

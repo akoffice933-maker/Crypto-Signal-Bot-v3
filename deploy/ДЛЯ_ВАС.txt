@@ -1,0 +1,180 @@
+# 🚀 ИНСТРУКЦИЯ ПО ЗАГРУЗКЕ НА VPS
+
+## 📋 ЧТО Я СОЗДАЛ:
+
+В папке `d:\bot_final\deploy\` находятся:
+
+1. **deploy.sh** - Скрипт автоматического развёртывания на VPS
+2. **upload-to-vps.ps1** - Загрузка файлов на VPS (PowerShell)
+3. **docker-compose-vps.yml** - Docker версия
+4. **nginx.conf** - Настройка Nginx
+5. **README.md** - Полная документация
+6. **vps-config.env** - Ваш конфиг (заполните!)
+
+---
+
+## ⚡ БЫСТРЫЙ СТАРТ (3 шага):
+
+### **ШАГ 1: Заполните конфиг**
+
+Откройте файл `vps-config.env` и заполните:
+
+```bash
+VPS_IP=ваш_ip_адрес
+VPS_PASSWORD=ваш_пароль
+DOMAIN=ваш-домен.com (если есть)
+EMAIL=ваш@email.com
+```
+
+**Сохраните!**
+
+---
+
+### **ШАГ 2: Загрузите файлы на VPS**
+
+**Вариант A: Автоматически (PowerShell):**
+
+1. Откройте PowerShell от имени администратора
+2. Выполните:
+```powershell
+cd d:\bot_final\deploy
+.\upload-to-vps.ps1
+```
+
+**Вариант B: Вручную (WinSCP):**
+
+1. Скачайте WinSCP: https://winscp.net
+2. Подключитесь к VPS:
+   - Host: ваш VPS IP
+   - Username: root
+   - Password: ваш пароль
+3. Скопируйте папку `bot_final` в `/tmp/crypto-bot-source`
+
+---
+
+### **ШАГ 3: Запустите на VPS**
+
+**1. Подключитесь к VPS:**
+```bash
+ssh root@ваш-ip
+```
+
+**2. Запустите развёртывание:**
+```bash
+sudo bash /tmp/crypto-bot-source/deploy/deploy.sh
+```
+
+**3. Настройте .env:**
+```bash
+nano /opt/crypto-bot/.env
+# Заполните вашими данными
+# Ctrl+O, Enter, Ctrl+X для сохранения
+```
+
+**4. Перезапустите бота:**
+```bash
+systemctl restart crypto-bot
+```
+
+**5. Проверьте:**
+```bash
+systemctl status crypto-bot
+```
+
+---
+
+## ✅ ПРОВЕРКА РАБОТЫ
+
+### **1. Проверьте API:**
+```bash
+curl http://localhost:8001/health
+```
+
+**Должно вернуть:**
+```json
+{"status": "healthy", ...}
+```
+
+### **2. Откройте Dashboard:**
+```
+http://ваш-vps-ip/dashboard
+```
+
+### **3. Проверьте Telegram:**
+```
+Отправьте @Akoffice_bot: /start
+```
+
+---
+
+## 🔧 ЕСЛИ ЧТО-ТО ПОШЛО НЕ ТАК
+
+### **Бот не запускается:**
+```bash
+journalctl -u crypto-bot -n 50
+```
+
+### **Порт 8001 не работает:**
+```bash
+netstat -tlnp | grep 8001
+systemctl restart crypto-bot
+```
+
+### **Nginx ошибка:**
+```bash
+nginx -t
+systemctl restart nginx
+```
+
+---
+
+## 📞 КОМАНДЫ УПРАВЛЕНИЯ
+
+```bash
+# Статус
+systemctl status crypto-bot
+
+# Перезапуск
+systemctl restart crypto-bot
+
+# Остановка
+systemctl stop crypto-bot
+
+# Логи
+journalctl -u crypto-bot -f
+tail -f /opt/crypto-bot/logs/bot.log
+```
+
+---
+
+## 🎉 ГОТОВО!
+
+**Ваш бот работает на VPS 24/7!**
+
+**Доступ:**
+- 🌐 Dashboard: `http://ваш-vps-ip/dashboard`
+- 🔌 API: `http://ваш-vps-ip/health`
+- 📱 Telegram: @Akoffice_bot
+- 📊 Канал: https://t.me/+urBYFrzObzU3Y2Ey
+
+---
+
+## 📝 ЧТО НУЖНО ОТПРАВИТЬ РАЗРАБОТЧИКУ:
+
+Заполните и отправьте файл `vps-config.env` со следующими данными:
+
+```
+VPS_IP=
+VPS_PASSWORD=
+DOMAIN= (если есть)
+EMAIL= (если есть)
+BINANCE_API_KEY= (если real trading)
+BINANCE_API_SECRET= (если real trading)
+```
+
+**Или просто скажите:**
+- IP адрес VPS
+- Пароль или SSH ключ
+- Домен (если есть)
+
+**Я всё настрою за вас!** 🚀
