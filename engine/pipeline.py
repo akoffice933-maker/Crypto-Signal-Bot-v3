@@ -31,6 +31,7 @@ from strategies.breakout import check_breakout
 from strategies.breakout import signal_to_dict as breakout_to_dict
 from strategies.sweep_reversal import check_sweep_reversal
 from strategies.sweep_reversal import signal_to_dict as sweep_to_dict
+from engine.sweep_trigger_5m import SweepTrigger5m
 from config.settings import settings
 from engine.confidence import ConfidenceResult
 from engine.logger import log_analysis_summary, log_liquidity_levels
@@ -130,6 +131,7 @@ async def run_pipeline(
     db: Database,
     ws: OrderFlowWebSocket,
     notifier,                          # TelegramNotifier | None
+    sweep_trigger=None,                # SweepTrigger5m | None
 ) -> Optional[dict]:
     """
     Full analysis cycle for all configured pairs.
@@ -153,6 +155,7 @@ async def run_pipeline(
                 ws=ws,
                 notifier=notifier,
                 symbol=symbol,
+                sweep_trigger=sweep_trigger,
             )
             if signal:
                 all_signals.append(signal)
@@ -173,6 +176,7 @@ async def _analyze_single_pair(
     ws: OrderFlowWebSocket,
     notifier,
     symbol: str,
+    sweep_trigger=None,                # SweepTrigger5m | None
 ) -> Optional[dict]:
     """
     Analyze a single trading pair.
@@ -275,12 +279,34 @@ async def _analyze_single_pair(
             "liquidity_levels_filtered": len(levels) - len(eligible_levels),
         })
 
-        # ── 4. Squeeze ────────────────────────────────────────────
+        # ── 4. Real-time Sweep Detection (5M) ─────────────────────
+        sweep_detected = False
+        if sweep_trigger:
+            try:
+                sweep_detected = await sweep_trigger.check_sweep(
+                    symbol=symbol,
+                    current_price=current_price,
+                    levels=levels,
+                    market_state=ctx.market_state,
+                    operating_mode=ctx.operating_mode,
+                )
+                if sweep_detected:
+                    logger.info(f"  ⚡ [SWEEP] Real-time 5M sweep detected for {symbol}")
+                else:
+                    logger.info(f"  ⚡ [SWEEP] No real-time sweep detected")
+            except Exception as e:
+                logger.warning(f"  ⚡ [SWEEP] Error checking sweep: {e}")
+        else:
+            logger.info(f"  ⚡ [SWEEP] No sweep_trigger provided")
+        
+        cycle_data["sweep_5m_detected"] = sweep_detected
+
+        # ── 5. Squeeze ────────────────────────────────────────────
         squeeze_active = is_squeeze(df_4h)
         cycle_data["squeeze_active"] = squeeze_active
         logger.info(f"\n📊 Squeeze Detector (4H): {'ACTIVE ✅' if squeeze_active else 'inactive ❌'}")
 
-        # ── 5. Order Flow ─────────────────────────────────────────
+        # ── 6. Order Flow ─────────────────────────────────────────
         # Funding rate
         try:
             fi = await client.get_premium_index(symbol)
@@ -315,7 +341,7 @@ async def _analyze_single_pair(
         cycle_data["cvd_divergence"] = cvd_div
         logger.info(f"  • CVD divergence: {cvd_div if cvd_div else 'None'}")
 
-        # ── 6. Sweep Reversal ─────────────────────────────────────
+        # ── 7. Sweep Reversal ─────────────────────────────────────
         signal_dict = None
         bo_sig = None
         no_signal_reasons: List[str] = []
@@ -401,7 +427,7 @@ async def _analyze_single_pair(
             logger.info(f"  ❌ [DIAG] Sweep reversal pattern NOT detected for {symbol}")
             no_signal_reasons.append("No sweep reversal pattern detected")
 
-        # ── 7. Breakout ──────────────────────────────────────────
+        # ── 8. Breakout ──────────────────────────────────────────
         quiet_breakout_allowed = (
             ctx.operating_mode == 'quiet'
             and squeeze_active

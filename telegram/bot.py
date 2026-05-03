@@ -32,7 +32,7 @@ class TransientTelegramPollingFilter(logging.Filter):
 
 
 class TelegramNotifier:
-    def __init__(self):
+    def __init__(self, trade_manager=None):
         self._bot: Bot | None = None
         self._dispatcher: Dispatcher | None = None
         self._router: Router | None = None
@@ -43,6 +43,7 @@ class TelegramNotifier:
         self._worker_task: asyncio.Task | None = None
         self._polling_task: asyncio.Task | None = None
         self._replay_task: asyncio.Task | None = None
+        self.trade_manager = trade_manager
 
     async def start(self):
         if not settings.telegram_token:
@@ -332,6 +333,51 @@ class TelegramNotifier:
             else:
                 await message.answer("❌ Канал не настроен")
 
+        @self._router.message(Command("trades"))
+        async def trades_handler(message: Message):
+            """Показать активные трейды из TradeManager."""
+            if not self.trade_manager:
+                await message.answer("❌ TradeManager не инициализирован")
+                return
+            active_trades = self.trade_manager.get_active_trades()
+            if not active_trades:
+                await message.answer("📭 Нет активных трейдов")
+                return
+            
+            lines = ["**📊 Активные трейды:**\n"]
+            for trade in active_trades:
+                emoji = "🟢" if trade.direction.value == "LONG" else "🔴"
+                lines.append(
+                    f"{emoji} *{trade.symbol}* {trade.strategy}\n"
+                    f"Направление: {trade.direction.value}\n"
+                    f"Вход: `{trade.levels.entry:.2f}` | SL: `{trade.levels.sl:.2f}`\n"
+                    f"TP1: `{trade.levels.tp1:.2f}` | TP2: `{trade.levels.tp2:.2f}`\n"
+                    f"Открыт: {trade.opened_at.strftime('%H:%M UTC')}\n"
+                    f"Истекает: {trade.expires_at.strftime('%H:%M UTC')}\n"
+                )
+            await message.answer("\n".join(lines), parse_mode="Markdown")
+
+        @self._router.message(Command("tradestats"))
+        async def tradestats_handler(message: Message):
+            """Показать статистику трейдов."""
+            if not self.trade_manager:
+                await message.answer("❌ TradeManager не инициализирован")
+                return
+            stats = self.trade_manager.get_stats()
+            active_trades = self.trade_manager.get_active_trades()
+            lines = [
+                "**📈 Статистика трейдов:**\n",
+                f"Всего трейдов: `{stats['total']}`",
+                f"Полных побед (TP2): `{stats['wins_full']}`",
+                f"Частичных побед (TP1): `{stats['wins_partial']}`",
+                f"Поражений (SL): `{stats['losses']}`",
+                f"Истекших: `{stats['expired']}`",
+                f"Винрейт: `{stats['win_rate_pct']:.1f}%`",
+                f"Средний RR: `{stats['avg_rr']:.2f}`",
+                f"Активных трейдов: `{len(active_trades)}`",
+            ]
+            await message.answer("\n".join(lines), parse_mode="Markdown")
+
     async def _set_commands(self):
         if not self._bot:
             return
@@ -346,6 +392,8 @@ class TelegramNotifier:
             BotCommand(command="replay", description="🧪 Replay сигналов"),
             BotCommand(command="join", description="📢 Канал с сигналами"),
             BotCommand(command="help", description="❓ Помощь"),
+            BotCommand(command="trades", description="📊 Активные трейды"),
+            BotCommand(command="tradestats", description="📈 Статистика трейдов"),
         ])
 
     def _build_start_text(self) -> str:

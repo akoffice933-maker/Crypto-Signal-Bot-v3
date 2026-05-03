@@ -21,6 +21,8 @@ from data.binance_client import BinanceFuturesClient
 from data.orderflow_ws import OrderFlowWebSocket
 from database.db import Database
 from engine.pipeline import run_pipeline
+from engine.sweep_trigger_5m import SweepTrigger5m
+from engine.trade_manager import TradeManager
 from telegram.bot import TelegramNotifier, TransientTelegramPollingFilter
 
 
@@ -60,6 +62,8 @@ db:        Database           = None
 client:    BinanceFuturesClient = None
 ws:        OrderFlowWebSocket   = None
 notifier:  TelegramNotifier     = None
+sweep_trigger: SweepTrigger5m   = None
+trade_manager: TradeManager     = None
 scheduler: AsyncIOScheduler     = None
 api_task:   asyncio.Task        = None
 api_server = None
@@ -79,20 +83,36 @@ async def analysis_cycle():
             db=db,
             ws=ws,
             notifier=notifier if not _dry_run else None,
+            sweep_trigger=sweep_trigger,
         )
         if sig:
             logger.info(
                 f"Signal: {sig['direction']} {sig['strategy']} "
                 f"entry={sig['entry_market']} conf={sig['confidence_score']}"
             )
+            # If signal has ATR, open a trade via trade_manager
+            if trade_manager and 'atr_pct' in sig:
+                try:
+                    trade = await trade_manager.open_trade(
+                        signal=sig,
+                        sweep_trigger=sweep_trigger,
+                    )
+                    if trade:
+                        logger.info(f"Trade opened: {trade.id}")
+                except Exception as e:
+                    logger.error(f"Failed to open trade: {e}", exc_info=True)
         else:
             logger.info(f"  ℹ️ [DIAG] No signal returned from pipeline this cycle")
+        
+        # Tick trade manager to check price levels
+        if trade_manager and client:
+            await trade_manager.tick_all(client)
     except Exception as e:
         logger.error(f"Pipeline error: {e}", exc_info=True)
 
 
 async def init():
-    global db, client, ws, notifier
+    global db, client, ws, notifier, sweep_trigger, trade_manager
 
     logger.info("Initialising components...")
 
@@ -113,6 +133,19 @@ async def init():
         notifier = TelegramNotifier()
         await notifier.start()
         logger.info("Telegram notifier started")
+
+    # Sweep trigger for 5M real-time detection
+    sweep_trigger = SweepTrigger5m(symbols=settings.symbols)
+    await sweep_trigger.start()
+    logger.info("SweepTrigger5m started")
+
+    # Trade manager for tracking positions
+    trade_manager = TradeManager(notifier=notifier, expiry_hours=4)
+    logger.info("TradeManager initialized")
+    
+    # Link trade_manager to notifier for Telegram commands
+    if notifier:
+        notifier.trade_manager = trade_manager
 
     logger.info("All components ready")
 
@@ -178,6 +211,11 @@ async def shutdown(sig_name: str = ""):
         await _await_shutdown_step("WebSocket client", ws.stop())
     if notifier:
         await _await_shutdown_step("Telegram notifier", notifier.stop())
+    if sweep_trigger:
+        await _await_shutdown_step("SweepTrigger5m", sweep_trigger.stop())
+    if trade_manager:
+        # trade_manager doesn't have a stop method, just log
+        logger.info("TradeManager cleaned up")
     if client:
         await _await_shutdown_step("Binance client", client.close())
     if db:
