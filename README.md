@@ -46,6 +46,11 @@ Async trading bot for cryptocurrency futures signal generation with Binance mark
    pip install -r requirements.txt
    ```
 
+   For development (testing, linting, documentation):
+   ```bash
+   pip install -r requirements-dev.txt
+   ```
+
 4. **Configure environment**
    ```bash
    cp .env.example .env
