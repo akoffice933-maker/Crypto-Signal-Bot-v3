@@ -192,32 +192,27 @@ class TelegramNotifier:
                 from database.db import Database
                 db = Database(settings.db_path)
                 await db.connect()
-                rows = await db._fetch("""
-                    SELECT pair, direction, strategy, entry_market, stop_loss, take_profit, created_at
-                    FROM signals
-                    WHERE status IN ('sent', 'partial_tp1')
-                    ORDER BY created_at DESC
-                    LIMIT 10
-                """)
+                signals = await db.get_active_signals(limit=10)
                 await db.close()
 
-                if not rows:
+                if not signals:
                     await message.answer("Нет активных сигналов 🫡")
                     return
 
                 lines = ["**🔴 Active Signals:**\n"]
-                for r in rows:
-                    emoji = "🟢" if r[1] == "LONG" else "🔴"
+                for s in signals:
+                    emoji = "🟢" if s["direction"] == "LONG" else "🔴"
                     pnl_text = "— "  # Можно добавить расчёт PnL
                     lines.append(
-                        f"{emoji} `{r[0]}` `{r[1]}` — `{r[2]}`\n"
-                        f"   Entry: `{r[3]:.2f}` | TP: `{r[5]:.2f}`\n"
+                        f"{emoji} `{s['pair']}` `{s['direction']}` — `{s['strategy']}`\n"
+                        f"   Entry: `{s['entry_market']:.2f}` | TP: `{s['take_profit']:.2f}`\n"
                         f"   PnL: `{pnl_text}`\n"
                     )
                 await message.answer("\n".join(lines), parse_mode="Markdown")
             except Exception as e:
                 logger.error(f"Active command error: {e}")
                 await message.answer("Error fetching active signals.")
+
 
         @self._router.message(Command("pairs"))
         async def pairs_handler(message: Message):
@@ -226,31 +221,23 @@ class TelegramNotifier:
                 from database.db import Database
                 db = Database(settings.db_path)
                 await db.connect()
-                rows = await db._fetch("""
-                    SELECT pair, COUNT(*), 
-                           AVG(confidence_score),
-                           SUM(CASE WHEN status='tp_hit' THEN 1 ELSE 0 END),
-                           SUM(CASE WHEN status='sl_hit' THEN 1 ELSE 0 END)
-                    FROM signals
-                    GROUP BY pair
-                    ORDER BY COUNT(*) DESC
-                """)
+                stats = await db.get_pair_stats()
                 await db.close()
 
-                if not rows:
+                if not stats:
                     await message.answer("Нет данных по парам.")
                     return
 
                 lines = ["**📊 Trading Pairs:**\n"]
-                for r in rows:
-                    total = r[1] or 0
-                    tp = r[3] or 0
-                    sl = r[4] or 0
+                for s in stats:
+                    total = s["total"] or 0
+                    tp = s["tp_hits"] or 0
+                    sl = s["sl_hits"] or 0
                     winrate = ((tp / (tp + sl)) * 100) if (tp + sl) > 0 else 0
                     lines.append(
-                        f"`{r[0]}`\n"
+                        f"`{s['pair']}`\n"
                         f"   Signals: `{total}` | Winrate: `{winrate:.1f}%`\n"
-                        f"   Avg Conf: `{r[2]:.1f}%`\n"
+                        f"   Avg Conf: `{s['avg_confidence']:.1f}%`\n"
                     )
                 await message.answer("\n".join(lines), parse_mode="Markdown")
             except Exception as e:
@@ -268,17 +255,10 @@ class TelegramNotifier:
 
                 db = Database(settings.db_path)
                 await db.connect()
-                rows = await db._fetch("""
-                    SELECT signal_id, created_at, pair, strategy, direction,
-                           entry_market, stop_loss, take_profit, rr_ratio,
-                           confidence_score, status
-                    FROM signals
-                    ORDER BY created_at DESC
-                    LIMIT 100
-                """)
+                signals = await db.get_signals_for_telegram_export(limit=100)
                 await db.close()
 
-                if not rows:
+                if not signals:
                     await message.answer("Нет сигналов для экспорта.")
                     return
 
@@ -289,12 +269,14 @@ class TelegramNotifier:
                              'confidence_score', 'status']
                 writer = csv.DictWriter(output, fieldnames=fieldnames)
                 writer.writeheader()
-                for r in rows:
+                for s in signals:
                     writer.writerow({
-                        'signal_id': r[0], 'created_at': r[1], 'pair': r[2],
-                        'strategy': r[3], 'direction': r[4], 'entry_market': r[5],
-                        'stop_loss': r[6], 'take_profit': r[7], 'rr_ratio': r[8],
-                        'confidence_score': r[9], 'status': r[10]
+                        'signal_id': s['signal_id'], 'created_at': s['created_at'],
+                        'pair': s['pair'], 'strategy': s['strategy'],
+                        'direction': s['direction'], 'entry_market': s['entry_market'],
+                        'stop_loss': s['stop_loss'], 'take_profit': s['take_profit'],
+                        'rr_ratio': s['rr_ratio'], 'confidence_score': s['confidence_score'],
+                        'status': s['status']
                     })
 
                 # Сохраняем файл
@@ -411,26 +393,20 @@ class TelegramNotifier:
             from database.db import Database
             db = Database(settings.db_path)
             await db.connect()
-            rows = await db._fetch("""
-                SELECT created_at, strategy, direction, entry_market, 
-                       take_profit, rr_ratio, confidence_score, status
-                FROM signals 
-                ORDER BY created_at DESC 
-                LIMIT 5
-            """)
+            signals = await db.get_recent_signals(limit=5)
             await db.close()
             
-            if not rows:
+            if not signals:
                 return "No signals yet.\n\nStart the bot and wait for analysis cycles."
             
             lines = ["**Recent Signals:**\n"]
-            for r in rows:
-                emoji = "🟢" if r[2] == "LONG" else "🔴"
+            for s in signals:
+                emoji = "🟢" if s["direction"] == "LONG" else "🔴"
                 lines.append(
-                    f"{emoji} `{r[2]}` `{r[1]}`\n"
-                    f"   Entry: `{r[3]:.2f}` | TP: `{r[4]:.2f}` | RR: `{r[5]:.2f}`\n"
-                    f"   Conf: `{r[6]}%` | Status: `{r[7]}`\n"
-                    f"   Time: `{r[0]}`\n"
+                    f"{emoji} `{s['direction']}` `{s['strategy']}`\n"
+                    f"   Entry: `{s['entry_market']:.2f}` | TP: `{s['take_profit']:.2f}` | RR: `{s['rr_ratio']:.2f}`\n"
+                    f"   Conf: `{s['confidence_score']}%` | Status: `{s['status']}`\n"
+                    f"   Time: `{s['created_at']}`\n"
                 )
             return "\n".join(lines)
         except Exception as e:

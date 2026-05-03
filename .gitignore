@@ -79,6 +79,9 @@ deploy/*.ps1
 deploy/*.sh
 deploy/*.md
 !deploy/README.md
+# Environment configs - ignore actual secrets, keep example files
+deploy/*.env
+!deploy/vps-config.env
 
 # Custom
 results/

@@ -1,3 +1,4 @@
+import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -35,9 +36,22 @@ app = FastAPI(
 async def auth(request: Request, call_next):
     return await auth_middleware(request, call_next)
 
+# CORS configuration
+cors_origins_str = os.getenv("CORS_ORIGINS", "").strip()
+if cors_origins_str:
+    allow_origins = [origin.strip() for origin in cors_origins_str.split(",")]
+else:
+    # Default safe origins for local development
+    allow_origins = [
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allow_origins,
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )

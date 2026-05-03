@@ -43,7 +43,7 @@ def test_operating_mode_selection():
 
 
 def test_blocked_mode_not_tradeable(monkeypatch):
-    _mock_context_inputs(monkeypatch, adx_value=18.0, atr_pct=0.0015)
+    _mock_context_inputs(monkeypatch, adx_value=18.0, atr_pct=0.0010)
     _freeze_utc_hour(monkeypatch, 9)
 
     ctx = market_state.get_market_context(_df())

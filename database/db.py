@@ -246,6 +246,60 @@ class Database:
         ]
         return [dict(zip(cols, row)) for row in rows or []]
 
+    async def get_active_signals(self, limit: int = 10) -> List[Dict[str, Any]]:
+        """Return active signals (status IN ('sent', 'partial_tp1'))."""
+        rows = await self._fetch("""
+            SELECT pair, direction, strategy, entry_market, stop_loss, take_profit, created_at
+            FROM signals
+            WHERE status IN ('sent', 'partial_tp1')
+            ORDER BY created_at DESC
+            LIMIT ?
+        """, (limit,))
+        cols = ["pair", "direction", "strategy", "entry_market", "stop_loss", "take_profit", "created_at"]
+        return [dict(zip(cols, row)) for row in rows or []]
+
+    async def get_pair_stats(self) -> List[Dict[str, Any]]:
+        """Return aggregated statistics per trading pair."""
+        rows = await self._fetch("""
+            SELECT pair, COUNT(*),
+                   AVG(confidence_score),
+                   SUM(CASE WHEN status='tp_hit' THEN 1 ELSE 0 END),
+                   SUM(CASE WHEN status='sl_hit' THEN 1 ELSE 0 END)
+            FROM signals
+            GROUP BY pair
+            ORDER BY COUNT(*) DESC
+        """)
+        cols = ["pair", "total", "avg_confidence", "tp_hits", "sl_hits"]
+        return [dict(zip(cols, row)) for row in rows or []]
+
+    async def get_signals_for_telegram_export(self, limit: int = 100) -> List[Dict[str, Any]]:
+        """Return signals for Telegram CSV export."""
+        rows = await self._fetch("""
+            SELECT signal_id, created_at, pair, strategy, direction,
+                   entry_market, stop_loss, take_profit, rr_ratio,
+                   confidence_score, status
+            FROM signals
+            ORDER BY created_at DESC
+            LIMIT ?
+        """, (limit,))
+        cols = ["signal_id", "created_at", "pair", "strategy", "direction",
+                "entry_market", "stop_loss", "take_profit", "rr_ratio",
+                "confidence_score", "status"]
+        return [dict(zip(cols, row)) for row in rows or []]
+
+    async def get_recent_signals(self, limit: int = 5) -> List[Dict[str, Any]]:
+        """Return recent signals for Telegram /signals command."""
+        rows = await self._fetch("""
+            SELECT created_at, strategy, direction, entry_market,
+                   take_profit, rr_ratio, confidence_score, status
+            FROM signals
+            ORDER BY created_at DESC
+            LIMIT ?
+        """, (limit,))
+        cols = ["created_at", "strategy", "direction", "entry_market",
+                "take_profit", "rr_ratio", "confidence_score", "status"]
+        return [dict(zip(cols, row)) for row in rows or []]
+
     async def count_signals_24h(self) -> int:
         row = await self._fetch_one(
             "SELECT COUNT(*) FROM signals WHERE created_at > datetime('now','-24 hours')"
