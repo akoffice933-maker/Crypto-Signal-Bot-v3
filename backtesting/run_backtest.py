@@ -23,6 +23,26 @@ from backtesting.backtester import BTConfig, Backtester
 from config.settings import settings
 
 
+def _resample_timeframe(df_15m: pd.DataFrame, rule: str) -> pd.DataFrame:
+    indexed = df_15m.copy()
+    indexed["open_time"] = pd.to_datetime(indexed["open_time"], utc=True)
+    indexed = indexed.set_index("open_time")
+    resampled = indexed.resample(rule).agg({
+        "open": "first",
+        "high": "max",
+        "low": "min",
+        "close": "last",
+        "volume": "sum",
+    }).dropna().reset_index()
+    return resampled
+
+
+def _historical_tf_limits(candles_15m: int) -> tuple[int, int]:
+    candles_4h = max(60, int(np.ceil(candles_15m / 16)) + 10)
+    candles_1d = max(30, int(np.ceil(candles_15m / 96)) + 5)
+    return candles_4h, candles_1d
+
+
 def make_synthetic(n: int = 2000, seed: int = 42) -> pd.DataFrame:
     """Realistic OHLC: separate open/close, non-zero bodies."""
     np.random.seed(seed)
@@ -32,22 +52,28 @@ def make_synthetic(n: int = 2000, seed: int = 42) -> pd.DataFrame:
     highs  = np.maximum(opens, closes) * (1 + np.abs(np.random.normal(0, 0.001, n)))
     lows   = np.minimum(opens, closes) * (1 - np.abs(np.random.normal(0, 0.001, n)))
     return pd.DataFrame({
-        "open_time": pd.date_range(start="2024-01-01", periods=n, freq="15min"),
+        "open_time": pd.date_range(start="2024-01-01", periods=n, freq="15min", tz="UTC"),
         "open": opens, "high": highs, "low": lows, "close": closes,
         "volume": np.random.exponential(1000, n),
     })
 
 
-async def fetch_real(symbol: str, candles: int) -> pd.DataFrame:
+async def fetch_real(symbol: str, candles: int) -> dict[str, pd.DataFrame]:
     from data.binance_client import BinanceFuturesClient, KLINE_COLS
     client = BinanceFuturesClient(settings.base_url)
-    raw    = await client.get_klines(symbol, "15m", limit=candles)
+    candles_4h, candles_1d = _historical_tf_limits(candles)
+    raw_15m = await client.get_historical_klines(symbol, "15m", total_limit=candles)
+    raw_4h = await client.get_historical_klines(symbol, "4h", total_limit=candles_4h)
+    raw_1d = await client.get_historical_klines(symbol, "1d", total_limit=candles_1d)
     await client.close()
-    df = pd.DataFrame(raw, columns=KLINE_COLS)
-    for c in ("open", "high", "low", "close", "volume"):
-        df[c] = df[c].astype(float)
-    df["open_time"] = pd.to_datetime(df["open_time"], unit="ms", utc=True)
-    return df
+    out = {}
+    for tf, raw in (("15m", raw_15m), ("4h", raw_4h), ("1d", raw_1d)):
+        df = pd.DataFrame(raw, columns=KLINE_COLS)
+        for c in ("open", "high", "low", "close", "volume"):
+            df[c] = df[c].astype(float)
+        df["open_time"] = pd.to_datetime(df["open_time"], unit="ms", utc=True)
+        out[tf] = df
+    return out
 
 
 def print_results(label: str, r: dict):
@@ -87,23 +113,29 @@ async def main():
 
     if args.real:
         print(f"Fetching {args.candles} × 15m candles for {args.symbol}...")
-        df = await fetch_real(args.symbol, args.candles)
+        data = await fetch_real(args.symbol, args.candles)
     else:
         print(f"Using synthetic candles (n={args.candles})")
-        df = make_synthetic(args.candles)
+        df_15m = make_synthetic(args.candles)
+        data = {
+            "15m": df_15m,
+            "4h": _resample_timeframe(df_15m, "4h"),
+            "1d": _resample_timeframe(df_15m, "1d"),
+        }
 
     cfg = BTConfig(
         initial_balance=10_000,
         fee_pct=0.0004,
         slippage_pct=0.0008,
         max_position_pct=0.10,
-        min_rr=settings.min_rr,
-        confidence_min=settings.confidence_threshold,
+        min_rr=None,
+        confidence_min=None,
         max_candles_hold=20,
+        execution_basis=settings.execution_basis,
     )
 
     bt      = Backtester(cfg)
-    results = bt.run(df)
+    results = bt.run(data)
     print_results(f"{args.symbol} — Sweep Reversal", results)
 
     os.makedirs("results", exist_ok=True)

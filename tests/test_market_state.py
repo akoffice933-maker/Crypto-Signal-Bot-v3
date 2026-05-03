@@ -39,46 +39,45 @@ def test_session_priority_overlap():
     """At hour 7 (London/Asian overlap) → session must be 'london'."""
     result = settings.get_session(7)
     assert result == "london", f"Expected 'london' at hour 7, got '{result}'"
-    print(f"✅ Session overlap (hour 7): '{result}'")
+    print(f"[OK] Session overlap (hour 7): '{result}'")
 
 
 def test_session_asian():
     assert settings.get_session(3)  == "asian"
     assert settings.get_session(0)  == "asian"
     assert settings.get_session(7)  == "london"   # overlap → london wins
-    print("✅ Asian session: hours 0-6 → asian, hour 7 → london")
+    print("[OK] Asian session: hours 0-6 -> asian, hour 7 -> london")
 
 
 def test_session_ny():
     assert settings.get_session(13) == "ny"
     assert settings.get_session(16) == "ny"
     assert settings.get_session(17) is None
-    print("✅ NY session: 13-16 active, 17 closed")
+    print("[OK] NY session: 13-16 active, 17 closed")
 
 
 def test_between_sessions():
     """Hour 12 is between London and NY → None."""
     result = settings.get_session(12)
     assert result is None, f"Expected None at hour 12, got '{result}'"
-    print("✅ Between sessions (hour 12): None")
+    print("[OK] Between sessions (hour 12): None")
 
 
 def test_low_volatility_not_tradeable():
-    """Low ATR% → tradeable=False regardless of session."""
+    """Blocked ATR regime should not be tradeable even during an active session."""
     df = _flat_df(n=60, atr_boost=0.1)   # very small moves
     with patch("engine.market_state.datetime") as mock_dt:
         mock_dt.now.return_value = datetime(2024, 1, 1, 9, 0, tzinfo=timezone.utc)
         ctx = get_market_context(df)
-    # If atr_pct < 0.7%, tradeable=False
-    if ctx.volatility_regime == "low":
-        assert not ctx.tradeable, "Low vol should not be tradeable"
-        print(f"✅ Low volatility not tradeable: atr={ctx.atr_pct*100:.3f}%")
+    if ctx.operating_mode == "blocked":
+        assert not ctx.tradeable, "Blocked mode should not be tradeable"
+        print(f"[OK] Blocked volatility not tradeable: atr={ctx.atr_pct*100:.3f}%")
     else:
-        print(f"ℹ️  Volatility not low ({ctx.volatility_regime}), skip assertion")
+        print(f"[INFO] Operating mode not blocked ({ctx.operating_mode}), skip assertion")
 
 
 def test_dead_zone_not_tradeable():
-    """ADX in 20-25 → market_state=dead_zone → tradeable=False."""
+    """ADX in configured dead zone → market_state=dead_zone → tradeable=False."""
     # We test the logic directly without needing exact ADX values
     from engine.market_state import MarketContext
     ctx = MarketContext(
@@ -92,7 +91,7 @@ def test_dead_zone_not_tradeable():
         tradeable=False,
     )
     assert not ctx.tradeable
-    print("✅ Dead zone not tradeable")
+    print("[OK] Dead zone not tradeable")
 
 
 def test_tradeable_conditions():
@@ -109,7 +108,7 @@ def test_tradeable_conditions():
         tradeable=True,
     )
     assert ctx.tradeable
-    print("✅ Ranging + normal vol + session → tradeable")
+    print("[OK] Ranging + normal vol + session -> tradeable")
 
 
 if __name__ == "__main__":
@@ -122,4 +121,4 @@ if __name__ == "__main__":
     test_low_volatility_not_tradeable()
     test_dead_zone_not_tradeable()
     test_tradeable_conditions()
-    print("\n✅ All market state tests passed")
+    print("\n[OK] All market state tests passed")

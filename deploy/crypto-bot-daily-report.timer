@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Crypto Signal Bot Daily Report at 00:00 UTC
+Requires=crypto-bot-daily-report.service
+
+[Timer]
+OnCalendar=*-*-* 00:00:00
+Timezone=UTC
+Persistent=true
+
+[Install]
+WantedBy=timers.target

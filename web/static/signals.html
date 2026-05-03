@@ -1,0 +1,461 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Signals — Crypto Signal Bot</title>
+  <style>
+    :root {
+      --bg: #f4efe6;
+      --card: rgba(255, 252, 246, 0.84);
+      --ink: #1e1f1c;
+      --muted: #5c6258;
+      --line: rgba(30, 31, 28, 0.12);
+      --accent: #d96c3d;
+      --accent-2: #1f6a5a;
+      --danger: #8f2d2d;
+      --shadow: 0 18px 60px rgba(45, 34, 24, 0.12);
+    }
+    [data-theme="dark"] {
+      --bg: #0d1117;
+      --card: rgba(22, 27, 34, 0.85);
+      --ink: #e6edf3;
+      --muted: #8b949e;
+      --line: rgba(240, 246, 252, 0.1);
+      --accent: #f0883e;
+      --accent-2: #3fb950;
+      --danger: #f85149;
+      --shadow: 0 18px 60px rgba(0, 0, 0, 0.4);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Bahnschrift", "Trebuchet MS", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(217, 108, 61, 0.18), transparent 28%),
+        radial-gradient(circle at bottom right, rgba(31, 106, 90, 0.16), transparent 24%),
+        linear-gradient(135deg, #ede3d2 0%, #f7f3ec 100%);
+      transition: background 0.3s ease;
+    }
+    [data-theme="dark"] body {
+      background:
+        radial-gradient(circle at top left, rgba(240, 136, 62, 0.15), transparent 28%),
+        radial-gradient(circle at bottom right, rgba(63, 185, 80, 0.12), transparent 24%),
+        linear-gradient(135deg, #0d1117 0%, #161b22 100%);
+    }
+    .shell {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 32px 20px 56px;
+    }
+    nav {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 32px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    nav a {
+      padding: 10px 18px;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--ink);
+      text-decoration: none;
+      backdrop-filter: blur(10px);
+      transition: all 0.2s;
+    }
+    nav a:hover, nav a.active {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+    .theme-toggle {
+      margin-left: auto;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      padding: 8px 12px;
+      background: var(--card);
+      color: var(--ink);
+      font-size: 1.2rem;
+      cursor: pointer;
+      backdrop-filter: blur(10px);
+      transition: all 0.2s;
+    }
+    .theme-toggle:hover {
+      background: var(--accent);
+      border-color: var(--accent);
+    }
+    h1 {
+      margin: 0 0 8px 0;
+      font-size: clamp(2rem, 4vw, 3rem);
+      line-height: 0.95;
+    }
+    .lede {
+      max-width: 70ch;
+      color: var(--muted);
+      font-size: 1.02rem;
+      line-height: 1.6;
+      margin-bottom: 28px;
+    }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 28px;
+    }
+    .stat-card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 20px;
+      text-align: center;
+    }
+    .stat-value {
+      font-size: 2rem;
+      font-weight: 700;
+      color: var(--accent-2);
+    }
+    .stat-label {
+      color: var(--muted);
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-top: 8px;
+    }
+    .filters {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 20px;
+      padding: 16px;
+      background: var(--card);
+      border-radius: 16px;
+      border: 1px solid var(--line);
+    }
+    .filters select, .filters button, .filters input {
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      padding: 10px 14px;
+      background: rgba(255,255,255,0.76);
+      color: var(--ink);
+      font: inherit;
+      cursor: pointer;
+    }
+    .filters button {
+      background: var(--ink);
+      color: #fff7ef;
+    }
+    .filters button.alt {
+      background: var(--accent-2);
+    }
+    .signals-table {
+      width: 100%;
+      overflow-x: auto;
+      background: var(--card);
+      border-radius: 16px;
+      border: 1px solid var(--line);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 1000px;
+    }
+    th, td {
+      text-align: left;
+      padding: 12px 8px;
+      border-bottom: 1px solid var(--line);
+      font-size: 0.9rem;
+    }
+    th {
+      color: var(--muted);
+      font: 700 0.72rem/1 "Consolas", monospace;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      white-space: nowrap;
+      position: sticky;
+      top: 0;
+      background: var(--card);
+    }
+    tr:hover {
+      background: rgba(217, 108, 61, 0.05);
+    }
+    .mono { font-family: "Consolas", monospace; }
+    .muted { color: var(--muted); }
+    .direction-long { color: var(--accent-2); font-weight: 700; }
+    .direction-short { color: var(--danger); font-weight: 700; }
+    .status-sent { color: var(--muted); }
+    .status-tp_hit { color: var(--accent-2); font-weight: 700; }
+    .status-sl_hit { color: var(--danger); font-weight: 700; }
+    .loading, .error {
+      text-align: center;
+      padding: 40px;
+      color: var(--muted);
+    }
+    .error { color: var(--danger); }
+    .pagination {
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+      margin-top: 20px;
+    }
+    .pagination button {
+      padding: 8px 16px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: var(--card);
+      color: var(--ink);
+      cursor: pointer;
+    }
+    .pagination button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    @media (max-width: 900px) {
+      .shell { padding: 12px; }
+      .filters { flex-direction: column; }
+      .filters select, .filters button, .filters input { width: 100%; }
+      table { font-size: 0.8rem; }
+      th, td { padding: 8px 4px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <nav>
+      <a href="/dashboard">Dashboard</a>
+      <a href="/signals/" class="active">Signals</a>
+      <a href="/replay">Replay</a>
+      <a href="/logs">Logs</a>
+      <a href="/settings">Settings</a>
+      <a href="/backtest">Backtest</a>
+      <button id="theme-toggle" class="theme-toggle" title="Toggle dark/light theme">
+        <span class="theme-icon">🌙</span>
+      </button>
+    </nav>
+
+    <h1>📊 Trading Signals</h1>
+    <div class="lede">
+      History of all trading signals generated by the bot. Filter by pair, direction, or strategy to find specific signals.
+    </div>
+
+    <div class="stats-grid" id="stats-grid">
+      <div class="stat-card">
+        <div class="stat-value" id="stat-total">-</div>
+        <div class="stat-label">Total Signals</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="stat-long">-</div>
+        <div class="stat-label">LONG</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="stat-short">-</div>
+        <div class="stat-label">SHORT</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="stat-winrate">-</div>
+        <div class="stat-label">Win Rate</div>
+      </div>
+    </div>
+
+    <div class="filters">
+      <select id="filter-pair">
+        <option value="">All Pairs</option>
+        <option value="BTCUSDT">BTCUSDT</option>
+        <option value="ETHUSDT">ETHUSDT</option>
+        <option value="SOLUSDT">SOLUSDT</option>
+        <option value="BNBUSDT">BNBUSDT</option>
+      </select>
+      <select id="filter-direction">
+        <option value="">All Directions</option>
+        <option value="LONG">LONG</option>
+        <option value="SHORT">SHORT</option>
+      </select>
+      <select id="filter-strategy">
+        <option value="">All Strategies</option>
+        <option value="sweep_reversal">Sweep Reversal</option>
+        <option value="breakout">Breakout</option>
+      </select>
+      <select id="filter-limit">
+        <option value="20">20 signals</option>
+        <option value="50" selected>50 signals</option>
+        <option value="100">100 signals</option>
+        <option value="200">200 signals</option>
+      </select>
+      <button id="filter-btn">Apply Filters</button>
+      <button id="export-btn" class="alt">Export CSV</button>
+    </div>
+
+    <div class="signals-table">
+      <div id="loading" class="loading">Loading signals...</div>
+      <div id="error" class="error"></div>
+      <table id="signals-table" style="display: none;">
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Pair</th>
+            <th>Direction</th>
+            <th>Strategy</th>
+            <th>Entry</th>
+            <th>SL</th>
+            <th>TP</th>
+            <th>RR</th>
+            <th>Conf</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="signals-body"></tbody>
+      </table>
+    </div>
+
+    <div class="pagination" id="pagination" style="display: none;">
+      <button id="prev-btn" disabled>← Previous</button>
+      <button id="next-btn">Next →</button>
+    </div>
+  </div>
+
+  <script>
+    let state = {
+      signals: [],
+      offset: 0,
+      limit: 50,
+      filters: {}
+    };
+
+    async function fetchJson(url) {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+      return response.json();
+    }
+
+    async function loadStats() {
+      try {
+        const stats = await fetchJson("/signals/stats");
+        document.getElementById("stat-total").textContent = stats.total || 0;
+        document.getElementById("stat-long").textContent = stats.longs || 0;
+        document.getElementById("stat-short").textContent = stats.shorts || 0;
+        document.getElementById("stat-winrate").textContent = stats.winrate_pct ? `${stats.winrate_pct.toFixed(1)}%` : "N/A";
+      } catch (error) {
+        console.error("Stats load error:", error);
+      }
+    }
+
+    async function loadSignals() {
+      const loading = document.getElementById("loading");
+      const table = document.getElementById("signals-table");
+      const error = document.getElementById("error");
+
+      loading.style.display = "block";
+      table.style.display = "none";
+      error.textContent = "";
+
+      try {
+        const pair = document.getElementById("filter-pair").value;
+        const direction = document.getElementById("filter-direction").value;
+        const strategy = document.getElementById("filter-strategy").value;
+        const limit = document.getElementById("filter-limit").value;
+
+        const params = new URLSearchParams({ limit });
+        if (pair) params.set("pair", pair);
+        if (direction) params.set("direction", direction);
+        if (strategy) params.set("strategy", strategy);
+
+        const signals = await fetchJson(`/signals/api?${params.toString()}`);
+        state.signals = signals;
+
+        loading.style.display = "none";
+        
+        if (!signals || signals.length === 0) {
+          error.textContent = "No signals found. Try adjusting filters.";
+          error.style.display = "block";
+          return;
+        }
+
+        renderSignals(signals);
+        table.style.display = "table";
+      } catch (error) {
+        loading.style.display = "none";
+        error.textContent = `Error loading signals: ${error.message}`;
+        error.style.display = "block";
+      }
+    }
+
+    function renderSignals(signals) {
+      const tbody = document.getElementById("signals-body");
+      tbody.innerHTML = "";
+
+      for (const sig of signals) {
+        const tr = document.createElement("tr");
+        const directionClass = sig.direction === "LONG" ? "direction-long" : "direction-short";
+        const statusClass = `status-${sig.status}`;
+        const statusLabel = sig.status.replace("_", " ");
+
+        tr.innerHTML = `
+          <td class="mono">${sig.created_at?.substring(0, 16).replace("T", " ") || "N/A"}</td>
+          <td><strong>${sig.pair || "BTCUSDT"}</strong></td>
+          <td class="${directionClass}">${sig.direction}</td>
+          <td>${sig.strategy}</td>
+          <td class="mono">${sig.entry_market?.toFixed(2) || "N/A"}</td>
+          <td class="mono">${sig.stop_loss?.toFixed(2) || "N/A"}</td>
+          <td class="mono">${sig.take_profit?.toFixed(2) || "N/A"}</td>
+          <td class="mono">${sig.rr_ratio?.toFixed(2) || "N/A"}</td>
+          <td>${sig.confidence_score || "N/A"}</td>
+          <td class="${statusClass}">${statusLabel}</td>
+        `;
+        tbody.appendChild(tr);
+      }
+    }
+
+    async function exportCsv() {
+      const pair = document.getElementById("filter-pair").value;
+      const direction = document.getElementById("filter-direction").value;
+      const strategy = document.getElementById("filter-strategy").value;
+      const limit = document.getElementById("filter-limit").value;
+
+      const params = new URLSearchParams({ limit });
+      if (pair) params.set("pair", pair);
+      if (direction) params.set("direction", direction);
+      if (strategy) params.set("strategy", strategy);
+
+      const response = await fetch(`/signals/export.csv?${params.toString()}`);
+      if (!response.ok) throw new Error("Export failed");
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `signals_export_${new Date().toISOString().split("T")[0]}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    // Theme toggle
+    const themeToggle = document.getElementById("theme-toggle");
+    const themeIcon = themeToggle.querySelector(".theme-icon");
+    const savedTheme = localStorage.getItem("theme") || "light";
+    document.documentElement.setAttribute("data-theme", savedTheme);
+    themeIcon.textContent = savedTheme === "dark" ? "☀️" : "🌙";
+
+    themeToggle.addEventListener("click", () => {
+      const currentTheme = document.documentElement.getAttribute("data-theme");
+      const newTheme = currentTheme === "dark" ? "light" : "dark";
+      document.documentElement.setAttribute("data-theme", newTheme);
+      localStorage.setItem("theme", newTheme);
+      themeIcon.textContent = newTheme === "dark" ? "☀️" : "🌙";
+    });
+
+    // Event listeners
+    document.getElementById("filter-btn").addEventListener("click", loadSignals);
+    document.getElementById("export-btn").addEventListener("click", () => exportCsv().catch(console.error));
+    document.getElementById("filter-limit").addEventListener("change", (e) => {
+      state.limit = parseInt(e.target.value);
+      loadSignals();
+    });
+
+    // Initial load
+    loadStats();
+    loadSignals();
+  </script>
+</body>
+</html>

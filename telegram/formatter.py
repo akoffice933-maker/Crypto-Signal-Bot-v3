@@ -55,9 +55,11 @@ _MARKET_LABEL = {
 }
 
 _VOL_LABEL = {
-    "low":    "Low",
-    "normal": "Normal",
-    "high":   "High",
+    "blocked": "Blocked",
+    "quiet":   "Quiet",
+    "low":     "Low",
+    "normal":  "Normal",
+    "high":    "High",
 }
 
 
@@ -71,12 +73,18 @@ def format_signal(signal: dict) -> str:
     entry_m = signal["entry_market"]
     entry_l = signal.get("entry_limit")
     sl      = signal["stop_loss"]
+    tp1     = signal.get("tp1_price")
+    tp1_rr  = signal.get("tp1_rr")
+    tp1_size_pct = signal.get("tp1_size_pct")
+    final_tp_size_pct = signal.get("final_tp_size_pct")
     tp      = signal["take_profit"]
     rr      = signal["rr_ratio"]
+    rr_basis = signal.get("execution_basis")
     conf    = signal["confidence_score"]
 
     ms  = _MARKET_LABEL.get(signal.get("market_state", ""), signal.get("market_state", ""))
-    vol = _VOL_LABEL.get(signal.get("volatility_regime", ""), "")
+    vol_raw = signal.get("volatility_regime", "")
+    vol = _VOL_LABEL.get(vol_raw, vol_raw)
 
     # Target liquidity label
     tf_raw   = signal.get("target_liquidity_tf", "")
@@ -121,10 +129,20 @@ def format_signal(signal: dict) -> str:
 
     # Entry limit line
     limit_line = f"Entry (Limit):  {entry_l:.2f}\n" if entry_l else ""
+    tp1_line = ""
+    if tp1 is not None:
+        tp1_pct_display = int(round((tp1_size_pct or 0) * 100))
+        tp1_rr_display = f"{tp1_rr:.1f}" if tp1_rr is not None else "2.0"
+        tp1_line = f"TP1:           {tp1:.2f} ({tp1_pct_display}% @ {tp1_rr_display}R)\n"
+    final_tp_line = f"Take Profit:   {tp:.2f}"
+    if final_tp_size_pct is not None and final_tp_size_pct < 1.0:
+        final_tp_line += f" ({int(round(final_tp_size_pct * 100))}%)"
+    final_tp_line += "\n"
 
     # Position size
     pos_pct = signal.get("position_size_pct")
     pos_line = f"Position Size:  {pos_pct:.1f}%\n" if pos_pct else ""
+    rr_suffix = f" ({rr_basis})" if rr_basis else ""
 
     msg = (
         f"{pair} {d} {emoji}\n"
@@ -133,8 +151,9 @@ def format_signal(signal: dict) -> str:
         f"Entry (Market): {entry_m:.2f}\n"
         f"{limit_line}"
         f"Stop Loss:     {sl:.2f}\n"
-        f"Take Profit:   {tp:.2f}\n"
-        f"RR:            {rr:.1f}\n"
+        f"{tp1_line}"
+        f"{final_tp_line}"
+        f"RR:            {rr:.1f}{rr_suffix}\n"
         f"{pos_line}"
         f"Confidence:    {conf}%\n"
         f"\n"

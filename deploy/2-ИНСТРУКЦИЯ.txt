@@ -1,0 +1,170 @@
+# 🚀 ЗАГРУЗКА НА VPS - БЫСТРЫЙ СТАРТ
+
+## ✅ ВСЁ ГОТОВО!
+
+---
+
+## **ШАГ 1: Откройте PowerShell**
+
+1. Нажмите `Win + X`
+2. Выберите **Windows PowerShell (Admin)**
+3. Или найдите в поиске: `PowerShell` → Запуск от имени администратора
+
+---
+
+## **ШАГ 2: Разрешите скрипты (если нужно)**
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+```
+
+Нажмите `Y` и `Enter`
+
+---
+
+## **ШАГ 3: Запустите загрузку**
+
+```powershell
+cd d:\bot_final\deploy
+.\upload-to-vps-final.ps1
+```
+
+---
+
+## **ШАГ 4: Введите пароль от VPS**
+
+Когда спросит пароль, введите: `6A0nZceRZE`
+
+*(пароль не отображается при вводе - это нормально!)*
+
+---
+
+## **ШАГ 5: Дождитесь завершения**
+
+Загрузка займёт 2-5 минут.
+
+**Должно появиться:** `SUCCESS!`
+
+---
+
+## **ШАГ 6: Подключитесь к VPS**
+
+```powershell
+ssh root@148.222.186.16
+```
+
+**Пароль:** `6A0nZceRZE`
+
+---
+
+## **ШАГ 7: Запустите развёртывание**
+
+**На VPS выполните:**
+
+```bash
+cd /opt/crypto-bot
+bash deploy/deploy.sh
+```
+
+**Дождитесь:** `Deployment completed!`
+
+---
+
+## **ШАГ 8: Проверьте работу**
+
+```bash
+systemctl status crypto-bot
+```
+
+**Должно быть:** `active (running)`
+
+---
+
+## **ШАГ 9: Проверьте API**
+
+```bash
+curl http://localhost:8001/health
+```
+
+**Должно вернуть:** `{"status": "healthy", ...}`
+
+---
+
+## **ШАГ 10: Откройте Dashboard**
+
+В браузере:
+```
+http://148.222.186.16:8001/dashboard
+```
+
+---
+
+## 🆘 **ЕСЛИ ОШИБКА**
+
+### **"scp is not recognized"**
+
+**Установите OpenSSH:**
+```powershell
+Add-WindowsCapability -Online -Name OpenSSH.Client~~~~0.0.1.0
+```
+
+**Затем снова:**
+```powershell
+.\upload-to-vps-final.ps1
+```
+
+---
+
+### **"Connection refused"**
+
+**Проверьте:**
+1. VPS запущен в панели хостинга
+2. SSH порт (может быть не 22, а 2222)
+3. Firewall не блокирует порт 22
+
+---
+
+### **"Permission denied"**
+
+**Проверьте пароль:** `6A0nZceRZE`
+
+---
+
+## 📞 **НУЖНА ПОМОЩЬ?**
+
+**Отправьте мне:**
+1. Скриншот ошибки
+2. Вывод команды: `systemctl status crypto-bot`
+
+**Я помогу!** 🚀
+
+---
+
+## ✅ **ЧЕК-ЛИСТ ГОТОВНОСТИ:**
+
+```
+[ ] PowerShell открыт (Admin)
+[ ] Скрипты разрешены
+[ ] Загружен: .\upload-to-vps-final.ps1
+[ ] Введён пароль от VPS
+[ ] Загрузка завершена: SUCCESS!
+[ ] SSH подключение работает
+[ ] deploy.sh выполнен
+[ ] systemctl status: active (running)
+[ ] curl health: {"status": "healthy"...}
+[ ] Dashboard открывается
+```
+
+---
+
+## 🎉 **ГОТОВО!**
+
+**Ваш бот работает на VPS!**
+
+**Доступ:**
+- 🌐 Dashboard: `http://148.222.186.16:8001/dashboard`
+- 🔌 API: `http://148.222.186.16:8001/health`
+- 📱 Telegram: @Akoffice_bot
+- 📊 Канал: https://t.me/+urBYFrzObzU3Y2Ey
+
+**Бот работает в режиме REAL TRADING!** 🚀

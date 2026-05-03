@@ -1,0 +1,23 @@
+[Unit]
+Description=Crypto Signal Bot — Active Signals Monitor
+After=network.target crypto-bot.service
+Wants=crypto-bot.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/crypto-bot
+Environment="PATH=/opt/crypto-bot/venv/bin:/usr/bin:/bin"
+ExecStart=/opt/crypto-bot/venv/bin/python scripts/active_signals_monitor.py --interval 60
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=crypto-monitor
+
+# Security
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,573 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Replay Results — Crypto Signal Bot</title>
+  <style>
+    :root {
+      --bg: #f4efe6;
+      --card: rgba(255, 252, 246, 0.84);
+      --ink: #1e1f1c;
+      --muted: #5c6258;
+      --line: rgba(30, 31, 28, 0.12);
+      --accent: #d96c3d;
+      --accent-2: #1f6a5a;
+      --danger: #8f2d2d;
+      --shadow: 0 18px 60px rgba(45, 34, 24, 0.12);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Bahnschrift", "Trebuchet MS", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(217, 108, 61, 0.18), transparent 28%),
+        radial-gradient(circle at bottom right, rgba(31, 106, 90, 0.16), transparent 24%),
+        linear-gradient(135deg, #ede3d2 0%, #f7f3ec 100%);
+    }
+    .shell {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 32px 20px 56px;
+    }
+    nav {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 32px;
+      flex-wrap: wrap;
+    }
+    nav a {
+      padding: 10px 18px;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--ink);
+      text-decoration: none;
+      backdrop-filter: blur(10px);
+      transition: all 0.2s;
+    }
+    nav a:hover, nav a.active {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+    h1 {
+      margin: 0 0 8px 0;
+      font-size: clamp(2rem, 4vw, 3rem);
+      line-height: 0.95;
+    }
+    .lede {
+      max-width: 70ch;
+      color: var(--muted);
+      font-size: 1.02rem;
+      line-height: 1.6;
+      margin-bottom: 28px;
+    }
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 18px;
+    }
+    button, select {
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      padding: 10px 14px;
+      background: rgba(255,255,255,0.76);
+      color: var(--ink);
+      font: inherit;
+      cursor: pointer;
+    }
+    button {
+      background: var(--ink);
+      color: #fff7ef;
+    }
+    button.alt {
+      background: var(--accent-2);
+    }
+    .card {
+      background: var(--card);
+      backdrop-filter: blur(10px);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      box-shadow: var(--shadow);
+      padding: 20px;
+      margin-bottom: 18px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 1000px;
+    }
+    th, td {
+      text-align: left;
+      padding: 12px 8px;
+      border-bottom: 1px solid var(--line);
+      font-size: 0.9rem;
+    }
+    th {
+      color: var(--muted);
+      font: 700 0.72rem/1 "Consolas", monospace;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+    .mono { font-family: "Consolas", monospace; }
+    .muted { color: var(--muted); }
+    .verdict-pass { color: var(--accent-2); font-weight: bold; }
+    .verdict-partial { color: #b86f1b; font-weight: bold; }
+    .verdict-fail { color: var(--danger); font-weight: bold; }
+    .error {
+      color: var(--danger);
+      padding: 20px;
+      text-align: center;
+    }
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: var(--muted);
+    }
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 18px;
+    }
+    .section-title {
+      margin: 0 0 14px 0;
+      font-size: 1.05rem;
+      letter-spacing: 0.02em;
+    }
+    .toolbar input {
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      padding: 10px 14px;
+      background: rgba(255,255,255,0.76);
+      color: var(--ink);
+      font: inherit;
+      min-width: 240px;
+    }
+    .table-wrap {
+      overflow-x: auto;
+    }
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.72);
+      font: 700 0.74rem/1 "Consolas", monospace;
+      letter-spacing: 0.04em;
+    }
+    .pill-good {
+      color: var(--accent-2);
+      border-color: rgba(31, 106, 90, 0.24);
+    }
+    .pill-bad {
+      color: var(--danger);
+      border-color: rgba(143, 45, 45, 0.24);
+    }
+    .pill-warn {
+      color: #b86f1b;
+      border-color: rgba(184, 111, 27, 0.24);
+    }
+    .summary-card {
+      background: rgba(255,255,255,0.62);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 16px;
+    }
+    .summary-key {
+      color: var(--muted);
+      font: 700 0.7rem/1 "Consolas", monospace;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+    .summary-value {
+      font-size: 1.5rem;
+      font-weight: 700;
+    }
+    @media (max-width: 900px) {
+      .shell { padding: 20px 12px; }
+      table { font-size: 0.8rem; }
+      th, td { padding: 8px 4px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <nav>
+      <a href="/dashboard">Dashboard</a>
+      <a href="/signals/">Signals</a>
+      <a href="/replay" class="active">Replay</a>
+      <a href="/logs">Logs</a>
+      <a href="/settings">Settings</a>
+      <a href="/backtest">Backtest</a>
+    </nav>
+
+    <h1>Replay Results</h1>
+    <div class="lede">
+      Parameter sweep comparison table showing performance metrics for different exit configurations.
+      Data is loaded from the most recent <code class="mono">results/replay_comparison_*.csv</code> file.
+    </div>
+
+    <div class="card">
+      <div class="toolbar">
+        <select id="experiment-filter">
+          <option value="">All experiments</option>
+          <option value="A">Experiment A (Timeout)</option>
+          <option value="B">Experiment B (TP Cap)</option>
+          <option value="C">Experiment C (SL)</option>
+          <option value="D">Experiment D (Combined)</option>
+        </select>
+        <button id="refresh-btn">Refresh</button>
+        <button id="export-btn" class="alt">Export CSV</button>
+      </div>
+
+      <div id="summary" class="summary-grid"></div>
+      <div id="error" class="error"></div>
+      <div id="loading" class="loading">Loading replay results...</div>
+      
+      <div class="table-wrap">
+        <table id="results-table" style="display: none;">
+          <thead>
+            <tr>
+              <th>Config</th>
+              <th>Exp</th>
+              <th>Timeout</th>
+              <th>TP Model</th>
+              <th>TP Max</th>
+              <th>SL</th>
+              <th>Signals</th>
+              <th>Validated</th>
+              <th>Exp%</th>
+              <th>PF</th>
+              <th>SL%</th>
+              <th>TO%</th>
+              <th>TP1%</th>
+              <th>MFE/MAE</th>
+              <th>Verdict</th>
+            </tr>
+          </thead>
+          <tbody id="results-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 class="section-title">Signal Config Comparison</h2>
+      <div class="toolbar">
+        <select id="signal-select">
+          <option value="">Select replayed signal</option>
+        </select>
+        <input id="signal-input" type="text" placeholder="Or enter signal_id">
+        <button id="signal-load-btn">Load Signal</button>
+      </div>
+
+      <div id="signal-meta" class="muted" style="margin-bottom: 14px;"></div>
+      <div id="signal-error" class="error"></div>
+      <div id="signal-loading" class="loading" style="display: none;">Loading signal comparison...</div>
+
+      <div class="table-wrap">
+        <table id="signal-table" style="display: none;">
+          <thead>
+            <tr>
+              <th>Config</th>
+              <th>Basis</th>
+              <th>Fill</th>
+              <th>SL</th>
+              <th>TP1</th>
+              <th>Final TP</th>
+              <th>RR Target</th>
+              <th>RR Achieved</th>
+              <th>PnL %</th>
+              <th>Status</th>
+              <th>Exit</th>
+              <th>MFE %</th>
+              <th>MAE %</th>
+              <th>MFE/MAE</th>
+            </tr>
+          </thead>
+          <tbody id="signal-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let state = {
+      results: [],
+      filteredResults: [],
+      replaySignals: [],
+      currentSignalRows: []
+    };
+
+    async function fetchJson(url) {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+      return response.json();
+    }
+
+    async function loadResults() {
+      document.getElementById("loading").style.display = "block";
+      document.getElementById("results-table").style.display = "none";
+      document.getElementById("error").textContent = "";
+      document.getElementById("summary").innerHTML = "";
+
+      try {
+        const results = await fetchJson("/replay/comparison?limit=100");
+        state.results = results;
+        filterResults();
+        renderSummary();
+        renderTable();
+        await loadSignalList();
+        
+        document.getElementById("loading").style.display = "none";
+        if (results.length === 0) {
+          document.getElementById("error").textContent = "No replay comparison files found. Run 'python scripts/replay_sweep.py' first.";
+        } else {
+          document.getElementById("results-table").style.display = "table";
+        }
+      } catch (error) {
+        document.getElementById("loading").style.display = "none";
+        document.getElementById("error").textContent = `Error loading results: ${error.message}`;
+      }
+    }
+
+    async function loadSignalList() {
+      const select = document.getElementById("signal-select");
+      select.innerHTML = '<option value="">Select replayed signal</option>';
+
+      const rows = await fetchJson("/replay/signals?limit=100");
+      state.replaySignals = rows;
+
+      for (const row of rows) {
+        const option = document.createElement("option");
+        option.value = row.signal_id;
+        option.textContent = `${row.signal_id} | ${row.direction} ${row.pair} | ${row.config_count} cfg`;
+        select.appendChild(option);
+      }
+
+      if (rows.length > 0 && !document.getElementById("signal-input").value.trim()) {
+        select.value = rows[0].signal_id;
+        await loadSignalComparison(rows[0].signal_id);
+      }
+    }
+
+    function filterResults() {
+      const experiment = document.getElementById("experiment-filter").value;
+      state.filteredResults = experiment
+        ? state.results.filter(r => r.experiment === experiment)
+        : state.results;
+    }
+
+    function renderSummary() {
+      const results = state.filteredResults;
+      if (results.length === 0) return;
+
+      const passing = results.filter(r => r.verdict && r.verdict.includes("✅")).length;
+      const partial = results.filter(r => r.verdict && r.verdict.includes("⚠️")).length;
+      const fail = results.filter(r => r.verdict && r.verdict.includes("❌")).length;
+      
+      const bestExpectancy = results.reduce((max, r) => {
+        const exp = parseFloat(r.expectancy) || 0;
+        return exp > max ? exp : max;
+      }, 0);
+
+      const summary = document.getElementById("summary");
+      summary.innerHTML = `
+        <div class="summary-card">
+          <div class="summary-key">Total Configs</div>
+          <div class="summary-value">${results.length}</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-key">Passing (✅)</div>
+          <div class="summary-value verdict-pass">${passing}</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-key">Partial (⚠️)</div>
+          <div class="summary-value verdict-partial">${partial}</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-key">Failing (❌)</div>
+          <div class="summary-value verdict-fail">${fail}</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-key">Best Expectancy</div>
+          <div class="summary-value">${(bestExpectancy * 100).toFixed(2)}%</div>
+        </div>
+      `;
+    }
+
+    function renderTable() {
+      const tbody = document.getElementById("results-body");
+      tbody.innerHTML = "";
+
+      for (const row of state.filteredResults) {
+        const tr = document.createElement("tr");
+        const verdictClass = row.verdict && row.verdict.includes("✅") ? "verdict-pass"
+          : row.verdict && row.verdict.includes("⚠️") ? "verdict-partial"
+          : "verdict-fail";
+        
+        const tpMax = row.tp_max_pct !== null && row.tp_max_pct !== undefined && row.tp_max_pct !== ""
+          ? parseFloat(row.tp_max_pct).toFixed(1)
+          : "—";
+        
+        tr.innerHTML = `
+          <td class="mono"><strong>${row.config_id || "—"}</strong></td>
+          <td>${row.experiment || "—"}</td>
+          <td class="mono">${row.timeout_candles || "—"}</td>
+          <td>${row.tp_model || "—"}</td>
+          <td class="mono">${tpMax}</td>
+          <td class="mono">${row.sl_mult || "—"}</td>
+          <td>${row.signals_processed || "—"}</td>
+          <td>${row.validated || "—"}</td>
+          <td class="mono">${row.expectancy !== null && row.expectancy !== undefined ? (parseFloat(row.expectancy) * 100).toFixed(2) : "—"}%</td>
+          <td class="mono">${row.profit_factor || "—"}</td>
+          <td class="mono">${row.sl_rate !== null && row.sl_rate !== undefined ? (parseFloat(row.sl_rate) * 100).toFixed(1) : "—"}%</td>
+          <td class="mono">${row.timeout_rate !== null && row.timeout_rate !== undefined ? (parseFloat(row.timeout_rate) * 100).toFixed(1) : "—"}%</td>
+          <td class="mono">${row.tp1_hit_rate !== null && row.tp1_hit_rate !== undefined ? (parseFloat(row.tp1_hit_rate) * 100).toFixed(1) : "—"}%</td>
+          <td class="mono">${row.mfe_mae_ratio || "—"}</td>
+          <td class="${verdictClass}">${row.verdict || "—"}</td>
+        `;
+        tbody.appendChild(tr);
+      }
+    }
+
+    function formatNumber(value, digits = 2, suffix = "") {
+      if (value === null || value === undefined || value === "") return "—";
+      return `${Number(value).toFixed(digits)}${suffix}`;
+    }
+
+    function renderSignalMeta(rows) {
+      const meta = document.getElementById("signal-meta");
+      if (!rows || rows.length === 0) {
+        meta.textContent = "";
+        return;
+      }
+
+      const first = rows[0];
+      meta.innerHTML = `
+        <span class="chip">${first.signal_id}</span>
+        <span class="chip">${first.direction} ${first.pair}</span>
+        <span class="chip">${first.strategy}</span>
+        <span class="chip">${rows.length} configs</span>
+        <span class="chip">${first.created_at}</span>
+      `;
+    }
+
+    function renderSignalComparison(rows) {
+      const tbody = document.getElementById("signal-body");
+      const table = document.getElementById("signal-table");
+      tbody.innerHTML = "";
+      renderSignalMeta(rows);
+
+      if (!rows || rows.length === 0) {
+        table.style.display = "none";
+        return;
+      }
+
+      for (const row of rows) {
+        const tr = document.createElement("tr");
+        const statusClass = row.validation_status === "validated"
+          ? "pill-good"
+          : row.validation_status === "no_fill"
+            ? "pill-warn"
+            : "pill-bad";
+        const pnlClass = row.pnl_pct > 0 ? "pill-good" : row.pnl_pct < 0 ? "pill-bad" : "pill-warn";
+        tr.innerHTML = `
+          <td class="mono"><strong>${row.config_id}</strong></td>
+          <td class="mono">${row.execution_basis || "—"}</td>
+          <td class="mono">${formatNumber(row.fill_price, 2)}</td>
+          <td class="mono">${formatNumber(row.stop_loss, 2)}</td>
+          <td class="mono">${formatNumber(row.tp1_price, 2)}</td>
+          <td class="mono">${formatNumber(row.take_profit, 2)}</td>
+          <td class="mono">${formatNumber(row.rr_ratio, 2)}</td>
+          <td class="mono">${formatNumber(row.rr_achieved, 2)}</td>
+          <td><span class="chip ${pnlClass}">${formatNumber(row.pnl_pct, 2, "%")}</span></td>
+          <td><span class="chip ${statusClass}">${row.validation_status || "—"}</span></td>
+          <td class="mono">${row.exit_reason || "—"}</td>
+          <td class="mono">${formatNumber(row.mfe_pct, 2, "%")}</td>
+          <td class="mono">${formatNumber(row.mae_pct, 2, "%")}</td>
+          <td class="mono">${formatNumber(row.mfe_mae_ratio, 2)}</td>
+        `;
+        tbody.appendChild(tr);
+      }
+
+      table.style.display = "table";
+    }
+
+    async function loadSignalComparison(signalId) {
+      const trimmed = (signalId || "").trim();
+      const signalError = document.getElementById("signal-error");
+      const signalLoading = document.getElementById("signal-loading");
+      const signalTable = document.getElementById("signal-table");
+
+      signalError.textContent = "";
+      if (!trimmed) {
+        renderSignalComparison([]);
+        return;
+      }
+
+      signalLoading.style.display = "block";
+      signalTable.style.display = "none";
+      try {
+        const payload = await fetchJson(`/replay/signal/${encodeURIComponent(trimmed)}`);
+        state.currentSignalRows = payload.rows || [];
+        if (!state.currentSignalRows.length) {
+          signalError.textContent = "No replay rows found for this signal_id.";
+          renderSignalComparison([]);
+        } else {
+          renderSignalComparison(state.currentSignalRows);
+        }
+      } catch (error) {
+        signalError.textContent = `Error loading signal comparison: ${error.message}`;
+        renderSignalComparison([]);
+      } finally {
+        signalLoading.style.display = "none";
+      }
+    }
+
+    async function exportCsv() {
+      const response = await fetch("/replay/export");
+      if (!response.ok) throw new Error("Export failed");
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "replay_comparison.csv";
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    document.getElementById("refresh-btn").addEventListener("click", () => loadResults());
+    document.getElementById("export-btn").addEventListener("click", () => exportCsv().catch(showError));
+    document.getElementById("experiment-filter").addEventListener("change", () => {
+      filterResults();
+      renderSummary();
+      renderTable();
+    });
+    document.getElementById("signal-load-btn").addEventListener("click", () => {
+      const typed = document.getElementById("signal-input").value.trim();
+      const selected = document.getElementById("signal-select").value;
+      loadSignalComparison(typed || selected);
+    });
+    document.getElementById("signal-select").addEventListener("change", (event) => {
+      document.getElementById("signal-input").value = "";
+      loadSignalComparison(event.target.value);
+    });
+
+    function showError(error) {
+      document.getElementById("error").textContent = error.message || String(error);
+    }
+
+    // Initial load
+    loadResults();
+  </script>
+</body>
+</html>

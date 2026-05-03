@@ -8,8 +8,11 @@ import logging
 import signal
 import sys
 import io
+from contextlib import suppress
+from datetime import datetime, timezone
 from pathlib import Path
 
+from apscheduler.schedulers import SchedulerNotRunningError
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
@@ -18,7 +21,25 @@ from data.binance_client import BinanceFuturesClient
 from data.orderflow_ws import OrderFlowWebSocket
 from database.db import Database
 from engine.pipeline import run_pipeline
-from telegram.bot import TelegramNotifier
+from telegram.bot import TelegramNotifier, TransientTelegramPollingFilter
+
+
+def _configure_console_encoding():
+    """Reconfigure console streams to UTF-8 on Windows (Python 3.7+)."""
+    if sys.platform != "win32":
+        return
+    for name in ("stdout", "stderr"):
+        stream = getattr(sys, name, None)
+        if stream is None:
+            continue
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
+
+# ── Console encoding (must be before logging.basicConfig) ────
+_configure_console_encoding()
 
 # ── Logging setup ─────────────────────────────────────────────
 Path("logs").mkdir(exist_ok=True)
@@ -30,6 +51,8 @@ logging.basicConfig(
         logging.FileHandler("logs/bot.log", encoding='utf-8'),
     ],
 )
+for _handler in logging.getLogger().handlers:
+    _handler.addFilter(TransientTelegramPollingFilter())
 logger = logging.getLogger(__name__)
 
 # ── Globals ───────────────────────────────────────────────────
@@ -41,26 +64,15 @@ scheduler: AsyncIOScheduler     = None
 api_task:   asyncio.Task        = None
 api_server = None
 _dry_run:  bool                 = False
-
-
-def _configure_console_encoding():
-    """Only wrap console streams for direct script runs on Windows."""
-    if sys.platform != "win32":
-        return
-    for name in ("stdout", "stderr"):
-        stream = getattr(sys, name, None)
-        if stream is None or not hasattr(stream, "buffer"):
-            continue
-        setattr(
-            sys,
-            name,
-            io.TextIOWrapper(stream.buffer, encoding="utf-8", errors="replace"),
-        )
+_shutdown_started: bool         = False
+_stop_event: asyncio.Event      = None
+_last_shutdown_signal: str      = ""
 
 
 async def analysis_cycle():
     """Called by scheduler every 15 minutes."""
     logger.info("── Analysis cycle start ──────────────────")
+    logger.info(f"  🔍 [DIAG] Cycle at UTC hour {datetime.now(timezone.utc).hour}")
     try:
         sig = await run_pipeline(
             client=client,
@@ -73,6 +85,8 @@ async def analysis_cycle():
                 f"Signal: {sig['direction']} {sig['strategy']} "
                 f"entry={sig['entry_market']} conf={sig['confidence_score']}"
             )
+        else:
+            logger.info(f"  ℹ️ [DIAG] No signal returned from pipeline this cycle")
     except Exception as e:
         logger.error(f"Pipeline error: {e}", exc_info=True)
 
@@ -92,9 +106,13 @@ async def init():
     ws = OrderFlowWebSocket(symbol=settings.symbol.lower())
     logger.info("WebSocket client created")
 
-    notifier = TelegramNotifier()
-    await notifier.start()
-    logger.info("Telegram notifier started")
+    if _dry_run:
+        notifier = None
+        logger.info("DRY RUN — Telegram notifier disabled")
+    else:
+        notifier = TelegramNotifier()
+        await notifier.start()
+        logger.info("Telegram notifier started")
 
     logger.info("All components ready")
 
@@ -113,25 +131,62 @@ def validate_runtime_config(*, dry_run: bool):
     settings.validate_runtime(dry_run=dry_run)
 
 
+def request_shutdown(sig_name: str = ""):
+    """Signal the main loop to exit and perform a single graceful shutdown."""
+    global _last_shutdown_signal
+    if sig_name:
+        _last_shutdown_signal = sig_name
+    if _stop_event and not _stop_event.is_set():
+        logger.info(f"Shutdown requested ({sig_name})")
+        _stop_event.set()
+
+
+async def _await_shutdown_step(
+    name: str,
+    awaitable,
+    timeout: float = 5.0,
+):
+    """Await a shutdown step with a timeout so systemd is not blocked indefinitely."""
+    try:
+        await asyncio.wait_for(awaitable, timeout=timeout)
+        logger.info(f"{name} stopped")
+    except asyncio.TimeoutError:
+        logger.warning(f"{name} shutdown timed out after {timeout:.1f}s")
+    except Exception as e:
+        logger.warning(f"{name} shutdown error: {e}")
+
+
 async def shutdown(sig_name: str = ""):
-    logger.info(f"Shutting down ({sig_name})...")
+    global _shutdown_started, _last_shutdown_signal
+    resolved_sig_name = sig_name or _last_shutdown_signal
+    if _shutdown_started:
+        logger.info(
+            f"Shutdown already in progress ({resolved_sig_name or 'repeat call'})"
+        )
+        return
+    _shutdown_started = True
+    logger.info(f"Shutting down ({resolved_sig_name})...")
     if api_server:
         api_server.should_exit = True
     if scheduler:
-        scheduler.shutdown(wait=False)
+        try:
+            scheduler.shutdown(wait=False)
+            logger.info("Scheduler stopped")
+        except SchedulerNotRunningError:
+            logger.debug("Scheduler already stopped")
     if ws:
-        await ws.stop()
+        await _await_shutdown_step("WebSocket client", ws.stop())
     if notifier:
-        await notifier.stop()
+        await _await_shutdown_step("Telegram notifier", notifier.stop())
     if client:
-        await client.close()
+        await _await_shutdown_step("Binance client", client.close())
     if db:
-        await db.close()
+        await _await_shutdown_step("Database", db.close())
     logger.info("Shutdown complete")
 
 
 async def main():
-    global scheduler, _dry_run, api_task
+    global scheduler, _dry_run, api_task, _stop_event
 
     parser = argparse.ArgumentParser(description="Crypto Signal Bot v3")
     parser.add_argument("--testnet",   action="store_true")
@@ -149,13 +204,14 @@ async def main():
         logger.info("DRY RUN mode — Telegram disabled")
 
     await init()
+    _stop_event = asyncio.Event()
 
     # OS signal handlers
     loop = asyncio.get_event_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):
         try:
             loop.add_signal_handler(
-                sig, lambda s=sig: asyncio.create_task(shutdown(s.name))
+                sig, lambda s=sig: request_shutdown(s.name)
             )
         except NotImplementedError:
             logger.debug("Signal handlers are not supported in this environment")
@@ -186,14 +242,21 @@ async def main():
     await analysis_cycle()
 
     try:
-        await asyncio.Event().wait()
+        await _stop_event.wait()
     finally:
         await shutdown()
         ws_task.cancel()
         tasks = [ws_task]
         if api_task:
             tasks.append(api_task)
-        await asyncio.gather(*tasks, return_exceptions=True)
+        try:
+            await asyncio.wait_for(asyncio.gather(*tasks, return_exceptions=True), timeout=10.0)
+        except asyncio.TimeoutError:
+            logger.warning("Background task shutdown timed out; cancelling remaining tasks")
+            for task in tasks:
+                task.cancel()
+            with suppress(Exception):
+                await asyncio.gather(*tasks, return_exceptions=True)
 
 
 # ── FastAPI health server (optional) ──────────────────────────

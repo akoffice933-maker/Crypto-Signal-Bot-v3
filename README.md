@@ -1,215 +1,277 @@
 # Crypto Signal Bot v3
 
-Async bot for BTCUSDT futures signal generation with Binance market data, SQLite persistence, Telegram delivery, backtesting, and a small FastAPI surface for health, signals, and Prometheus metrics.
-
-Practical monitoring and signal-waiting guide: [README_SIGNAL_GUIDE.md](D:/bot_final/README_SIGNAL_GUIDE.md)
+Async trading bot for cryptocurrency futures signal generation with Binance market data, SQLite persistence, Telegram delivery, backtesting, and a FastAPI web interface.
 
 ## Features
 
-- 15-minute analysis pipeline with async scheduler
-- Two trading strategies:
+- **15-minute analysis pipeline** with async scheduler
+- **Dual trading strategies**:
   - `sweep_reversal`: liquidity sweep with rejection confirmation
   - `breakout`: 4H squeeze breakout using Bollinger expansion
-- SQLite storage for signals, cooldowns, liquidity pools, and OI snapshots
-- Telegram notifications with formatted trade plans
-- FastAPI endpoints: `/health`, `/signals`, `/signals/stats`, `/signals/liquidity`, `/metrics`, `/dashboard`
-- CSV export and Google Sheets sync via webhook
-- Critical error alerts and Telegram flood protection
-- Backtesting utilities and local test suite
+- **Multi-pair support**: Analyze multiple trading pairs simultaneously
+- **SQLite storage** for signals, cooldowns, liquidity pools, and OI snapshots
+- **Telegram notifications** with formatted trade plans
+- **FastAPI web interface** with endpoints: `/health`, `/signals`, `/signals/stats`, `/signals/liquidity`, `/metrics`, `/dashboard`
+- **CSV export** and Google Sheets sync via webhook
+- **Backtesting utilities** and comprehensive test suite
+- **Weekend trading support** (configurable)
+- **Dual-mode operation**: NORMAL/QUIET/BLOCKED based on market volatility
 
-## Installation
+## Quick Start
 
-### Local Python
+### Prerequisites
+- Python 3.9+
+- Binance API key (with futures trading enabled)
+- Telegram Bot Token
 
-1. Create and activate a virtual environment.
-2. Install dependencies.
-3. Copy `.env.example` to `.env` and fill required values.
-4. Start the bot.
+### Installation
 
-```powershell
-python -m venv .venv
-.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-pip install -r requirements.txt
-Copy-Item .env.example .env
-python main.py --log-level=INFO
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/akoffice933-maker/crypto-signal-bot-v3.git
+   cd crypto-signal-bot-v3
+   ```
+
+2. **Create virtual environment**
+   ```bash
+   python -m venv venv
+   # Windows
+   venv\Scripts\activate
+   # Linux/Mac
+   source venv/bin/activate
+   ```
+
+3. **Install dependencies**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+4. **Configure environment**
+   ```bash
+   cp .env.example .env
+   # Edit .env with your API keys and settings
+   ```
+
+5. **Run the bot**
+   ```bash
+   python main.py --log-level=INFO
+   ```
+
+### Docker Installation
+```bash
+cp .env.example .env
+docker-compose up --build
 ```
-
-For startup validation, `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` are required unless you run in dry-run mode:
-
-```powershell
-python main.py --dry-run --log-level=DEBUG
-```
-
-### Docker
-
-```powershell
-Copy-Item .env.example .env
-docker compose up --build
-```
-
-The container exposes the API on `http://localhost:8000`.
 
 ## Configuration
 
-Environment variables from `.env`:
+### Environment Variables
+
+Create a `.env` file with the following variables:
 
 ```env
-TELEGRAM_BOT_TOKEN=your_token
+# Binance API
+BINANCE_API_KEY=your_api_key
+BINANCE_API_SECRET=your_api_secret
+TESTNET=true  # Use testnet for development
+
+# Telegram
+TELEGRAM_BOT_TOKEN=your_bot_token
 TELEGRAM_CHAT_ID=your_chat_id
-BINANCE_API_KEY=your_key
-BINANCE_API_SECRET=your_secret
-TESTNET=true
-DB_PATH=data/signals.db
-LOG_LEVEL=INFO
+
+# Trading Settings
+SYMBOLS=BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT
 ACCOUNT_BALANCE=10000
-GOOGLE_SHEETS_WEBHOOK_URL=
-GOOGLE_SHEETS_TIMEOUT_SECONDS=10
-TELEGRAM_MAX_MESSAGES_PER_MINUTE=20
-TELEGRAM_MIN_INTERVAL_SECONDS=1.2
+
+# Application
+LOG_LEVEL=INFO
+API_KEY=your_api_key_for_web_interface
+DEV_MODE=false
 ```
 
-Important runtime notes:
+### Trading Settings
 
-- `--testnet` forces testnet URLs at startup.
-- `--dry-run` skips Telegram validation and message sending.
-- API and bot run in the same process; `/health` and `/metrics` stay available while the scheduler runs.
-- Google Sheets sync uses `GOOGLE_SHEETS_WEBHOOK_URL` or a URL passed from the dashboard/API.
-- Telegram sending is protected by local throttling using `TELEGRAM_MAX_MESSAGES_PER_MINUTE` and `TELEGRAM_MIN_INTERVAL_SECONDS`.
+Key parameters in `config/settings.py`:
+- `quiet_atr_min`: Minimum ATR% for trading (default: 0.12%)
+- `normal_confidence_threshold`: Confidence threshold for NORMAL mode (default: 65)
+- `quiet_confidence_threshold`: Confidence threshold for QUIET mode (default: 70)
+- `quiet_breakout_min_adx`: Minimum ADX for breakout in QUIET mode (default: 30)
 
-## Strategies
+## Project Structure
 
-### 1. Liquidity Sweep Reversal
-
-Looks for equal highs/lows on `1d` and `4h`, then waits for:
-
-- a sweep through the liquidity level
-- a close back inside the level
-- a rejection candle with strong wick/body ratio
-- optional order-flow confirmation via CVD, funding, and OI cascade
-
-Typical use case: fade a failed breakout after liquidity is taken.
-
-### 2. Volatility Breakout
-
-Activates only when a 4H squeeze is detected and the latest 15m candle breaks outside Bollinger Bands. This strategy targets momentum continuation with fixed stop distance and a wider take-profit band.
-
-Typical use case: trade expansion after prolonged compression.
-
-## API
-
-- `GET /health` returns component status plus 24h metrics
-- `GET /signals/` lists recent stored signals
-- `GET /signals/stats` returns 30-day aggregate stats
-- `GET /signals/liquidity?current_price=60000` lists active liquidity pools
-- `GET /signals/export.csv?limit=500` downloads recent signals as CSV
-- `POST /signals/export/google-sheets` pushes signals to an Apps Script webhook
-- `GET /metrics` exposes Prometheus-compatible gauges:
-  - `crypto_signal_signals_24h`
-  - `crypto_signal_winrate_24h`
-  - `crypto_signal_avg_drawdown_pct_24h`
-- `GET /dashboard` opens the built-in web interface
-
-### Google Sheets Webhook Payload
-
-The Google Sheets sync endpoint sends JSON in the shape:
-
-```json
-{
-  "columns": ["signal_id", "created_at", "..."],
-  "rows": [
-    {"signal_id": "abc123", "strategy": "sweep_reversal", "status": "sent"}
-  ]
-}
+```
+crypto-signal-bot-v3/
+├── main.py                 # Entry point
+├── config/                 # Configuration
+├── engine/                 # Core analysis engine
+│   ├── pipeline.py         # Main analysis pipeline
+│   ├── confidence.py       # Confidence scoring
+│   ├── liquidity_map.py    # Liquidity level detection
+│   └── indicators.py       # Technical indicators
+├── strategies/             # Trading strategies
+│   ├── sweep_reversal.py   # Sweep reversal strategy
+│   └── breakout.py         # Breakout strategy
+├── database/               # Database layer
+├── data/                   # Market data clients
+├── telegram/               # Telegram integration
+├── web/                    # FastAPI web interface
+├── tests/                  # Test suite
+├── scripts/                # Utility scripts
+└── deploy/                 # Deployment scripts
 ```
 
-The intended target is a deployed Google Apps Script web app that accepts POST requests and appends rows into a sheet.
+## Usage
 
-## Example Signals
+### Running the Bot
 
-### Sweep Reversal
+```bash
+# Normal mode
+python main.py --log-level=INFO
 
-```text
-BTCUSDT LONG 🟢
+# Dry run (no Telegram messages)
+python main.py --dry-run --log-level=DEBUG
 
-Strategy: Liquidity Sweep Reversal
-Entry (Market): 60012.50
-Entry (Limit):  59940.00
-Stop Loss:     59780.00
-Take Profit:   60650.00
-RR:            2.8
-Confidence:    82%
-
-Market State: Range
-Volatility:   Normal
-Target Liquidity: Daily High
-
-Order Flow:
-• CVD bullish divergence
-• Funding negative (-0.020%)
-
-Analysis factors:
-+30 Liquidity sweep confirmed
-+20 Volume spike ≥1.2×
-+20 Session: london
-+15 CVD bullish divergence
-
-🔑 `a1b2c3d4`
+# Test mode
+python main.py --testnet --log-level=INFO
 ```
 
-### Breakout
+### Web Interface
 
-```text
-BTCUSDT SHORT 🔴
+After starting the bot, access the web interface at `http://localhost:8000`:
 
-Strategy: Volatility Breakout
-Entry (Market): 60540.00
-Stop Loss:     60963.78
-Take Profit:   58723.80
-RR:            4.3
-Confidence:    76%
+- Dashboard: `http://localhost:8000/dashboard`
+- Signals API: `http://localhost:8000/signals/api`
+- Health check: `http://localhost:8000/health`
+- Metrics: `http://localhost:8000/metrics`
 
-Market State: Range
-Volatility:   High
-Target Liquidity: —
+### Telegram Commands
 
-Order Flow:
-• Volatility squeeze active (4H)
-• CVD bearish divergence
+- `/start` - Bot status and mode
+- `/active` - Show active signals
+- `/pairs` - Show trading pairs and statistics
+- `/export` - Export signals to CSV
+- `/replay` - Replay recent signals
 
-Analysis factors:
-+25 Squeeze breakout
-+20 Volume spike ≥1.2×
-+20 Session: ny
-+20 Volatility squeeze (4h)
+## Development
 
-🔑 `deadbeef`
+### Running Tests
+
+```bash
+# Run all tests
+pytest tests/
+
+# Run specific test module
+pytest tests/test_pipeline.py -v
+
+# Run with coverage
+pytest --cov=engine tests/
 ```
 
-## Testing
+### Code Style
 
-Run the full pytest suite:
+The project uses flake8 for code style checking:
 
-```powershell
-python -m pytest -q
+```bash
+flake8 .
 ```
 
-Run the custom console runner:
+### Adding New Strategies
 
-```powershell
-python tests\run_all.py
+1. Create a new strategy file in `strategies/`
+2. Implement the strategy logic
+3. Add strategy detection to `engine/pipeline.py`
+4. Add tests in `tests/`
+
+## Deployment
+
+### VPS Deployment
+
+See `deploy/` directory for deployment scripts:
+
+```bash
+# Linux/Mac
+./deploy/deploy.sh
+
+# Windows PowerShell
+.\deploy\deploy.ps1
 ```
 
-## Project Layout
+### Systemd Service
 
-```text
-config/       runtime settings
-data/         Binance REST and WebSocket clients
-database/     SQLite schema and access layer
-engine/       indicators, market state, confidence, pipeline
-strategies/   signal generation logic
-telegram/     message formatting and delivery
-web/          FastAPI app and routes
-backtesting/  offline evaluation tools
-tests/        unit and integration tests
+A systemd service file is provided in `deploy/crypto-bot.service`:
+
+```bash
+sudo cp deploy/crypto-bot.service /etc/systemd/system/
+sudo systemctl enable crypto-bot
+sudo systemctl start crypto-bot
 ```
+
+## Monitoring
+
+### Logs
+
+```bash
+# View bot logs
+tail -f logs/bot.log
+
+# Systemd logs
+journalctl -u crypto-bot -f
+```
+
+### Metrics
+
+Prometheus metrics are available at `http://localhost:8000/metrics`
+
+### Health Checks
+
+```bash
+curl http://localhost:8000/health
+```
+
+## Troubleshooting
+
+### Common Issues
+
+1. **No signals generated**
+   - Check market volatility (ATR%)
+   - Verify Binance API connectivity
+   - Check if market is in dead zone (ADX 15-25)
+
+2. **Telegram messages not sending**
+   - Verify `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`
+   - Check bot has permission to send messages
+   - Check rate limiting
+
+3. **Database errors**
+   - Verify write permissions for `data/` directory
+   - Check SQLite file is not corrupted
+
+### Debug Mode
+
+Run with debug logging for detailed information:
+
+```bash
+python main.py --log-level=DEBUG
+```
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Disclaimer
+
+This software is for educational and research purposes only. Use at your own risk. The authors are not responsible for any financial losses incurred while using this bot. Cryptocurrency trading carries significant risk, and you should only trade with money you can afford to lose.
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## Support
+
+For issues and questions, please open an issue on GitHub.

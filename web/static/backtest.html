@@ -146,6 +146,18 @@
       <p class="muted">Historical performance analysis</p>
       
       <div style="margin: 20px 0;">
+        <label for="symbol-input" class="muted" style="margin-right: 8px;">Symbol</label>
+        <input id="symbol-input" type="text" value="BTCUSDT"
+               style="padding: 10px 14px; border-radius: 999px; border: 1px solid var(--line); margin-right: 12px; width: 140px; text-transform: uppercase;">
+        <label for="candles-input" class="muted" style="margin-right: 8px;">15m candles</label>
+        <input id="candles-input" type="number" min="500" max="50000" step="500" value="8640"
+               style="padding: 10px 14px; border-radius: 999px; border: 1px solid var(--line); margin-right: 12px; width: 140px;">
+        <label for="balance-input" class="muted" style="margin-right: 8px;">Initial balance</label>
+        <input id="balance-input" type="number" min="100" step="100" value="10000"
+               style="padding: 10px 14px; border-radius: 999px; border: 1px solid var(--line); margin-right: 12px; width: 140px;">
+        <label for="position-input" class="muted" style="margin-right: 8px;">Max position</label>
+        <input id="position-input" type="number" min="0.01" max="1" step="0.01" value="0.10"
+               style="padding: 10px 14px; border-radius: 999px; border: 1px solid var(--line); margin-right: 12px; width: 120px;">
         <button class="btn" onclick="runBacktest()" id="run-btn">▶ Run Backtest</button>
         <button class="btn" onclick="loadResults()" id="load-btn">📥 Load Results</button>
       </div>
@@ -180,7 +192,24 @@
           <div class="metric-value" id="avg-rr">—</div>
           <div class="metric-label">Avg R:R</div>
         </div>
+        <div class="metric-card">
+          <div class="metric-value" id="tp1-hits">—</div>
+          <div class="metric-label">TP1 Hits</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-value" id="full-tp-hits">—</div>
+          <div class="metric-label">Full TP Hits</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-value" id="sl-hits">—</div>
+          <div class="metric-label">SL Hits</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-value" id="timeout-hits">—</div>
+          <div class="metric-label">Timeout Hits</div>
+        </div>
       </div>
+      <p class="muted" id="backtest-config"></p>
     </div>
 
     <div class="card" id="trades-card" style="display: none;">
@@ -201,53 +230,163 @@
         <tbody id="trades-body"></tbody>
       </table>
     </div>
+
+    <div class="card" id="live-signals-card">
+      <h2>Latest Live Signals</h2>
+      <p class="muted" id="live-signals-status">Loading latest signals...</p>
+      <table>
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Strategy</th>
+            <th>Direction</th>
+            <th>Entry</th>
+            <th>TP1</th>
+            <th>Final TP</th>
+            <th>R:R</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="live-signals-body"></tbody>
+      </table>
+    </div>
   </div>
 
   <script>
+    let backtestPollTimer = null;
+
+    function setStatus(message, kind = "muted") {
+      const status = document.getElementById("backtest-status");
+      const colorMap = {
+        muted: "var(--muted)",
+        started: "var(--accent)",
+        running: "var(--accent)",
+        completed: "var(--accent-2)",
+        error: "var(--danger)",
+      };
+      status.innerHTML = `<p style="color: ${colorMap[kind] || colorMap.muted}">${message}</p>`;
+    }
+
+    function clearBacktestPoll() {
+      if (backtestPollTimer) {
+        clearTimeout(backtestPollTimer);
+        backtestPollTimer = null;
+      }
+    }
+
+    function scheduleBacktestPoll(delayMs = 2000) {
+      clearBacktestPoll();
+      backtestPollTimer = setTimeout(pollBacktestState, delayMs);
+    }
+
     async function runBacktest() {
       const btn = document.getElementById("run-btn");
-      const status = document.getElementById("backtest-status");
+      const symbol = (document.getElementById("symbol-input").value || "BTCUSDT").trim().toUpperCase();
+      const candles = Number(document.getElementById("candles-input").value || 8640);
+      const initialBalance = Number(document.getElementById("balance-input").value || 10000);
+      const maxPositionPct = Number(document.getElementById("position-input").value || 0.10);
       
       btn.disabled = true;
-      status.innerHTML = '<p>Running backtest... This may take a few minutes.</p>';
+      setStatus("Backtest started. Preparing historical data...", "started");
       
       try {
-        const response = await fetch("/backtest/run", { method: "POST" });
+        const response = await fetch("/backtest/run", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            symbol,
+            candles,
+            initial_balance: initialBalance,
+            max_position_pct: maxPositionPct,
+          }),
+        });
         const result = await response.json();
         
         if (response.ok) {
-          status.innerHTML = `<p style="color: var(--accent-2)">✅ Backtest completed! ${result.message || ""}</p>`;
-          loadResults();
+          setStatus(`Backtest started. ${result.message || ""}`, "started");
+          scheduleBacktestPoll(1000);
         } else {
-          status.innerHTML = `<div class="error-msg">❌ Error: ${result.detail || "Unknown error"}</div>`;
+          setStatus(`Error: ${result.detail || "Unknown error"}`, "error");
+          btn.disabled = false;
         }
       } catch (error) {
-        status.innerHTML = `<div class="error-msg">❌ Error: ${error.message}</div>`;
-      } finally {
+        setStatus(`Error: ${error.message}`, "error");
         btn.disabled = false;
       }
     }
 
-    async function loadResults() {
+    async function pollBacktestState() {
+      const btn = document.getElementById("run-btn");
       try {
         const response = await fetch("/backtest/results");
         const data = await response.json();
-        
+
+        if (data.status === "running") {
+          setStatus(data.message || "Backtest is running...", "running");
+          if ((data.trades && data.trades.length) || (data.total_trades || 0) > 0) {
+            renderMetrics(data);
+            renderTrades(data.trades || []);
+            document.getElementById("metrics-card").style.display = "block";
+            document.getElementById("trades-card").style.display = "block";
+          }
+          btn.disabled = true;
+          scheduleBacktestPoll();
+          return;
+        }
+
+        clearBacktestPoll();
+        btn.disabled = false;
+
         if (data.error) {
           document.getElementById("metrics-card").style.display = "none";
           document.getElementById("trades-card").style.display = "none";
-          document.getElementById("backtest-status").innerHTML = 
-            '<p class="muted">No backtest results found. Run a backtest first.</p>';
+          setStatus(`Backtest failed: ${data.error}`, "error");
           return;
         }
-        
-        renderMetrics(data);
-        renderTrades(data.trades || []);
-        
-        document.getElementById("metrics-card").style.display = "block";
-        document.getElementById("trades-card").style.display = "block";
+
+        if (data.status === "completed") {
+          renderMetrics(data);
+          renderTrades(data.trades || []);
+          document.getElementById("metrics-card").style.display = "block";
+          document.getElementById("trades-card").style.display = "block";
+          setStatus("Backtest completed.", "completed");
+          return;
+        }
+
+        document.getElementById("metrics-card").style.display = "none";
+        document.getElementById("trades-card").style.display = "none";
+        setStatus("No backtest results found. Run a backtest first.", "muted");
       } catch (error) {
+        clearBacktestPoll();
+        btn.disabled = false;
         console.error("Error loading results:", error);
+        setStatus(`Error loading backtest results: ${error.message}`, "error");
+      }
+    }
+
+    async function loadResults() {
+      await pollBacktestState();
+    }
+
+    async function loadLiveSignals() {
+      const status = document.getElementById("live-signals-status");
+      const tbody = document.getElementById("live-signals-body");
+
+      try {
+        const response = await fetch("/signals/?limit=10");
+        const signals = await response.json();
+
+        if (!response.ok) {
+          throw new Error(signals.detail || "Failed to load live signals");
+        }
+
+        renderLiveSignals(Array.isArray(signals) ? signals : []);
+        status.textContent = Array.isArray(signals) && signals.length
+          ? "Latest rows from signals.db"
+          : "No live signals found yet.";
+      } catch (error) {
+        tbody.innerHTML = "";
+        status.textContent = `Error loading live signals: ${error.message}`;
       }
     }
 
@@ -258,6 +397,13 @@
       document.getElementById("max-drawdown").textContent = (data.max_drawdown_pct || 0).toFixed(2) + "%";
       document.getElementById("total-return").textContent = (data.total_return_pct || 0).toFixed(2) + "%";
       document.getElementById("avg-rr").textContent = data.avg_rr || 0;
+      document.getElementById("tp1-hits").textContent = data.tp1_hits || 0;
+      document.getElementById("full-tp-hits").textContent = data.full_tp_hits || 0;
+      document.getElementById("sl-hits").textContent = data.sl_hits || 0;
+      document.getElementById("timeout-hits").textContent = data.timeout_hits || 0;
+      const cfg = data.config || {};
+      document.getElementById("backtest-config").textContent =
+        cfg.candles ? `Config: ${cfg.symbol || "BTCUSDT"}, ${cfg.candles} x 15m candles, balance ${cfg.initial_balance || 10000}, max position ${(cfg.max_position_pct || 0.1) * 100}%, max hold ${cfg.max_candles_hold || 20} candles.` : "";
     }
 
     function renderTrades(trades) {
@@ -285,8 +431,36 @@
       }
     }
 
+    function renderLiveSignals(signals) {
+      const tbody = document.getElementById("live-signals-body");
+      tbody.innerHTML = "";
+
+      for (const signal of signals) {
+        const tr = document.createElement("tr");
+        const direction = signal.direction === "LONG" ? "🟢 LONG" : "🔴 SHORT";
+        const entry = signal.entry_limit ?? signal.entry_market;
+        const rr = signal.rr_ratio != null ? Number(signal.rr_ratio).toFixed(2) : "—";
+        const tp1 = signal.tp1_price != null ? Number(signal.tp1_price).toFixed(2) : "—";
+        const finalTp = signal.take_profit != null ? Number(signal.take_profit).toFixed(2) : "—";
+
+        tr.innerHTML = `
+          <td>${signal.created_at || "—"}</td>
+          <td>${signal.strategy || "—"}</td>
+          <td>${direction}</td>
+          <td>${entry != null ? Number(entry).toFixed(2) : "—"}</td>
+          <td>${tp1}</td>
+          <td>${finalTp}</td>
+          <td>${rr}</td>
+          <td>${signal.status || "—"}</td>
+        `;
+        tbody.appendChild(tr);
+      }
+    }
+
     // Load results on page load
     loadResults();
+    loadLiveSignals();
+    setInterval(loadLiveSignals, 30000);
   </script>
 </body>
 </html>

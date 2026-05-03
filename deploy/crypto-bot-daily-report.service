@@ -1,0 +1,13 @@
+[Unit]
+Description=Crypto Signal Bot Daily Report
+After=network.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/crypto-bot
+Environment="PATH=/opt/crypto-bot/venv/bin"
+ExecStart=/opt/crypto-bot/venv/bin/python /opt/crypto-bot/scripts/daily_report.py
+
+[Install]
+WantedBy=multi-user.target

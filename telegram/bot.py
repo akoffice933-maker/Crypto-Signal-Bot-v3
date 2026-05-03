@@ -3,16 +3,32 @@ from contextlib import suppress
 import logging
 import time
 from collections import deque
+from pathlib import Path
 
 from aiogram import Bot, Dispatcher, Router
+from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.exceptions import TelegramRetryAfter
 from aiogram.filters import Command, CommandStart
 from aiogram.types import BotCommand, Message
+from aiogram.utils.backoff import BackoffConfig
 
 from config.settings import settings
 from telegram.formatter import format_signal
 
 logger = logging.getLogger(__name__)
+
+
+class TransientTelegramPollingFilter(logging.Filter):
+    _TRANSIENT_MESSAGES = (
+        "Failed to fetch updates - TelegramNetworkError: HTTP Client says - Request timeout error",
+        "Failed to fetch updates - TelegramNetworkError: HTTP Client says - ServerDisconnectedError: Server disconnected",
+    )
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if record.name != "aiogram.dispatcher":
+            return True
+        message = record.getMessage()
+        return not any(marker in message for marker in self._TRANSIENT_MESSAGES)
 
 
 class TelegramNotifier:
@@ -26,12 +42,13 @@ class TelegramNotifier:
         self._last_send_at: float = 0.0
         self._worker_task: asyncio.Task | None = None
         self._polling_task: asyncio.Task | None = None
+        self._replay_task: asyncio.Task | None = None
 
     async def start(self):
         if not settings.telegram_token:
             logger.warning("No Telegram token — notifications disabled")
             return
-        self._bot = Bot(token=settings.telegram_token)
+        self._bot = self._build_bot()
         self._dispatcher = Dispatcher()
         self._router = Router()
         self._register_handlers()
@@ -39,7 +56,11 @@ class TelegramNotifier:
         self._running = True
         self._worker_task = asyncio.create_task(self._worker(), name="telegram_notifier_worker")
         self._polling_task = asyncio.create_task(
-            self._dispatcher.start_polling(self._bot),
+            self._dispatcher.start_polling(
+                self._bot,
+                polling_timeout=settings.telegram_polling_timeout_seconds,
+                backoff_config=self._build_polling_backoff(),
+            ),
             name="telegram_notifier_polling",
         )
         await self._set_commands()
@@ -57,6 +78,11 @@ class TelegramNotifier:
             with suppress(asyncio.CancelledError):
                 await self._worker_task
             self._worker_task = None
+        if self._replay_task:
+            self._replay_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await self._replay_task
+            self._replay_task = None
         if self._bot:
             await self._bot.session.close()
         self._dispatcher = None
@@ -70,6 +96,14 @@ class TelegramNotifier:
 
     async def send_alert(self, text: str):
         await self._queue.put(("alert", text))
+
+    def _build_bot(self) -> Bot:
+        session = AiohttpSession(timeout=settings.telegram_request_timeout_seconds)
+        return Bot(token=settings.telegram_token, session=session)
+
+    def _build_polling_backoff(self) -> BackoffConfig:
+        # Keep reconnects resilient to short Telegram/API network spikes.
+        return BackoffConfig(min_delay=1.0, max_delay=15.0, factor=1.5, jitter=0.1)
 
     async def _worker(self):
         while self._running:
@@ -151,9 +185,156 @@ class TelegramNotifier:
         async def stats_handler(message: Message):
             await message.answer(await self._build_stats_text(), parse_mode="Markdown")
 
+        @self._router.message(Command("active"))
+        async def active_handler(message: Message):
+            """Показать активные сигналы."""
+            try:
+                from database.db import Database
+                db = Database(settings.db_path)
+                await db.connect()
+                rows = await db._fetch("""
+                    SELECT pair, direction, strategy, entry_market, stop_loss, take_profit, created_at
+                    FROM signals
+                    WHERE status IN ('sent', 'partial_tp1')
+                    ORDER BY created_at DESC
+                    LIMIT 10
+                """)
+                await db.close()
+
+                if not rows:
+                    await message.answer("Нет активных сигналов 🫡")
+                    return
+
+                lines = ["**🔴 Active Signals:**\n"]
+                for r in rows:
+                    emoji = "🟢" if r[1] == "LONG" else "🔴"
+                    pnl_text = "— "  # Можно добавить расчёт PnL
+                    lines.append(
+                        f"{emoji} `{r[0]}` `{r[1]}` — `{r[2]}`\n"
+                        f"   Entry: `{r[3]:.2f}` | TP: `{r[5]:.2f}`\n"
+                        f"   PnL: `{pnl_text}`\n"
+                    )
+                await message.answer("\n".join(lines), parse_mode="Markdown")
+            except Exception as e:
+                logger.error(f"Active command error: {e}")
+                await message.answer("Error fetching active signals.")
+
+        @self._router.message(Command("pairs"))
+        async def pairs_handler(message: Message):
+            """Показать список пар и статистику."""
+            try:
+                from database.db import Database
+                db = Database(settings.db_path)
+                await db.connect()
+                rows = await db._fetch("""
+                    SELECT pair, COUNT(*), 
+                           AVG(confidence_score),
+                           SUM(CASE WHEN status='tp_hit' THEN 1 ELSE 0 END),
+                           SUM(CASE WHEN status='sl_hit' THEN 1 ELSE 0 END)
+                    FROM signals
+                    GROUP BY pair
+                    ORDER BY COUNT(*) DESC
+                """)
+                await db.close()
+
+                if not rows:
+                    await message.answer("Нет данных по парам.")
+                    return
+
+                lines = ["**📊 Trading Pairs:**\n"]
+                for r in rows:
+                    total = r[1] or 0
+                    tp = r[3] or 0
+                    sl = r[4] or 0
+                    winrate = ((tp / (tp + sl)) * 100) if (tp + sl) > 0 else 0
+                    lines.append(
+                        f"`{r[0]}`\n"
+                        f"   Signals: `{total}` | Winrate: `{winrate:.1f}%`\n"
+                        f"   Avg Conf: `{r[2]:.1f}%`\n"
+                    )
+                await message.answer("\n".join(lines), parse_mode="Markdown")
+            except Exception as e:
+                logger.error(f"Pairs command error: {e}")
+                await message.answer("Error fetching pairs stats.")
+
+        @self._router.message(Command("export"))
+        async def export_handler(message: Message):
+            """Экспорт сигналов в CSV."""
+            try:
+                from database.db import Database
+                import csv
+                import io
+                from pathlib import Path
+
+                db = Database(settings.db_path)
+                await db.connect()
+                rows = await db._fetch("""
+                    SELECT signal_id, created_at, pair, strategy, direction,
+                           entry_market, stop_loss, take_profit, rr_ratio,
+                           confidence_score, status
+                    FROM signals
+                    ORDER BY created_at DESC
+                    LIMIT 100
+                """)
+                await db.close()
+
+                if not rows:
+                    await message.answer("Нет сигналов для экспорта.")
+                    return
+
+                # Создаём CSV в памяти
+                output = io.StringIO()
+                fieldnames = ['signal_id', 'created_at', 'pair', 'strategy', 'direction',
+                             'entry_market', 'stop_loss', 'take_profit', 'rr_ratio',
+                             'confidence_score', 'status']
+                writer = csv.DictWriter(output, fieldnames=fieldnames)
+                writer.writeheader()
+                for r in rows:
+                    writer.writerow({
+                        'signal_id': r[0], 'created_at': r[1], 'pair': r[2],
+                        'strategy': r[3], 'direction': r[4], 'entry_market': r[5],
+                        'stop_loss': r[6], 'take_profit': r[7], 'rr_ratio': r[8],
+                        'confidence_score': r[9], 'status': r[10]
+                    })
+
+                # Сохраняем файл
+                Path("results").mkdir(exist_ok=True)
+                filepath = Path("results") / "telegram_export.csv"
+                with open(filepath, "w", encoding="utf-8", newline="") as f:
+                    f.write(output.getvalue())
+
+                await message.answer_document(
+                    document=str(filepath),
+                    caption=f"📊 Exported {len(rows)} signals"
+                )
+            except Exception as e:
+                logger.error(f"Export command error: {e}")
+                await message.answer(f"Export failed: {e}")
+
         @self._router.message(Command("help"))
         async def help_handler(message: Message):
             await message.answer(self._build_help_text(), parse_mode="Markdown")
+
+        @self._router.message(Command("replay"))
+        async def replay_handler(message: Message):
+            if self._replay_task and not self._replay_task.done():
+                await message.answer("Replay уже выполняется. Дождись завершения текущего прогона.")
+                return
+
+            try:
+                limit = self._parse_replay_limit(message.text)
+            except ValueError as e:
+                await message.answer(str(e))
+                return
+
+            await message.answer(
+                f"Запускаю replay последних `{limit}` сигналов. Это может занять до пары минут.",
+                parse_mode="Markdown",
+            )
+            self._replay_task = asyncio.create_task(
+                self._run_signal_replay(message.chat.id, limit),
+                name="telegram_signal_replay",
+            )
 
         @self._router.message(Command("join"))
         async def join_handler(message: Message):
@@ -174,42 +355,54 @@ class TelegramNotifier:
             return
         await self._bot.set_my_commands([
             BotCommand(command="start", description="🚀 Запустить бота"),
-            BotCommand(command="status", description="📊 Статус нотификера"),
-            BotCommand(command="signals", description="📈 Последние сигналы"),
-            BotCommand(command="stats", description="📉 Статистика 24h"),
+            BotCommand(command="status", description="📊 Статус бота"),
+            BotCommand(command="active", description="🔴 Активные сигналы"),
+            BotCommand(command="pairs", description="📈 Статистика по парам"),
+            BotCommand(command="signals", description="📉 Последние сигналы"),
+            BotCommand(command="stats", description="📊 Статистика 24h"),
+            BotCommand(command="export", description="📥 Экспорт в CSV"),
+            BotCommand(command="replay", description="🧪 Replay сигналов"),
             BotCommand(command="join", description="📢 Канал с сигналами"),
             BotCommand(command="help", description="❓ Помощь"),
         ])
 
     def _build_start_text(self) -> str:
         mode = "testnet" if settings.testnet else "live"
+        pairs = ", ".join(settings.symbols)
         channel_link = getattr(settings, 'telegram_channel_link', None)
-        
+
         join_text = ""
         if channel_link:
             join_text = f"\n📢 **Наш канал:** [{channel_link}]({channel_link})\n"
-        
+
         return (
-            "🤖 **Bot is online**\n\n"
+            "🤖 **Crypto Signal Bot v3.4**\n\n"
             f"Mode: `{mode}`\n"
-            f"Symbol: `{settings.symbol}`\n"
-            f"Signals chat: `{settings.telegram_chat_id or 'not configured'}`\n"
+            f"Pairs: `{pairs}`\n"
+            f"Chat ID: `{settings.telegram_chat_id or 'not configured'}`\n"
             f"{join_text}"
-            "**Commands:**\n"
-            "/status - show notifier status\n"
-            "/signals - last 5 signals\n"
-            "/stats - 24h statistics\n"
-            "/help - bot help"
+            "**📋 Commands:**\n"
+            "/status - Статус бота\n"
+            "/active - Активные сигналы 🔴\n"
+            "/pairs - Статистика по парам 📈\n"
+            "/signals - Последние 5 сигналов\n"
+            "/stats - Статистика 24h 📊\n"
+            "/export - Экспорт в CSV 📥\n"
+            "/replay [limit] - Replay сигналов\n"
+            "/help - Помощь\n"
+            "/join - Канал с сигналами"
         )
 
     def _build_status_text(self) -> str:
         queue_size = self._queue.qsize()
         running = "yes" if self._running else "no"
+        pairs = ", ".join(settings.symbols)
         return (
-            "Notifier status\n\n"
+            "**Notifier Status**\n\n"
             f"Running: `{running}`\n"
             f"Queue size: `{queue_size}`\n"
-            f"Mode: `{'testnet' if settings.testnet else 'live'}`"
+            f"Mode: `{'testnet' if settings.testnet else 'live'}`\n"
+            f"Pairs: `{pairs}`"
         )
 
     async def _build_signals_text(self) -> str:
@@ -234,7 +427,7 @@ class TelegramNotifier:
             for r in rows:
                 emoji = "🟢" if r[2] == "LONG" else "🔴"
                 lines.append(
-                    f"{emoji} `{r[2]}` {r[1]}\n"
+                    f"{emoji} `{r[2]}` `{r[1]}`\n"
                     f"   Entry: `{r[3]:.2f}` | TP: `{r[4]:.2f}` | RR: `{r[5]:.2f}`\n"
                     f"   Conf: `{r[6]}%` | Status: `{r[7]}`\n"
                     f"   Time: `{r[0]}`\n"
@@ -287,23 +480,100 @@ class TelegramNotifier:
             logger.error(f"Stats command error: {e}")
             return "Error fetching stats. Check logs."
 
-    def _build_help_text(self) -> str:
+    def _parse_replay_limit(self, text: str | None) -> int:
+        default_limit = 20
+        if not text:
+            return default_limit
+        parts = text.strip().split()
+        if len(parts) == 1:
+            return default_limit
+        try:
+            limit = int(parts[1])
+        except ValueError as e:
+            raise ValueError("Usage: /replay or /replay 20") from e
+        if not 1 <= limit <= 200:
+            raise ValueError("Replay limit must be between 1 and 200.")
+        return limit
+
+    def _build_public_download_url(self, filename: str) -> str | None:
+        if not settings.public_base_url or not settings.download_token:
+            return None
         return (
-            "**Crypto Signal Bot — Help**\n\n"
-            "**Commands:**\n"
-            "/start — Запустить бота\n"
-            "/status — Статус нотификера\n"
-            "/signals — Последние 5 сигналов\n"
-            "/stats — Статистика за 24 часа\n"
-            "/help — Эта справка\n\n"
-            "**Режимы работы:**\n"
-            "• `live` — реальная торговля\n"
-            "• `testnet` — тестовая сеть Binance\n\n"
-            "**Стратегии:**\n"
+            f"{settings.public_base_url}/downloads/{Path(filename).name}"
+            f"?token={settings.download_token}"
+        )
+
+    async def _run_signal_replay(self, chat_id: int, limit: int) -> None:
+        if not self._bot:
+            return
+
+        try:
+            from scripts.signal_replay import run_signal_replay
+
+            replay = await run_signal_replay(
+                db_path=settings.db_path,
+                limit=limit,
+                out=str(Path("results") / "signal_replay_latest.csv"),
+                default_basis=settings.execution_basis,
+                position_pct=settings.max_position_pct,
+            )
+            summary = replay["summary"]
+            download_url = self._build_public_download_url(replay["csv_path"])
+            text = (
+                "**Signal Replay Completed**\n\n"
+                f"Signals processed: `{summary['signals_processed']}`\n"
+                f"Validated: `{summary['validated']}`\n"
+                f"No fill: `{summary['no_fill']}`\n"
+                f"No data: `{summary['no_data']}`\n"
+                f"Insufficient candles: `{summary['insufficient_future_data']}`\n"
+                f"Full TP hits: `{summary['full_tp_hits']}`\n"
+                f"SL hits: `{summary['sl_hits']}`\n"
+                f"Timeout hits: `{summary['timeout_hits']}`\n"
+                f"Avg achieved RR: `{summary['avg_rr_achieved']:.2f}`"
+            )
+            if download_url:
+                text += f"\n\n[Download CSV]({download_url})"
+            else:
+                text += f"\n\nCSV: `{replay['csv_path']}`"
+            await self._bot.send_message(chat_id=chat_id, text=text, parse_mode="Markdown")
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            logger.error(f"Replay command error: {e}")
+            await self._bot.send_message(
+                chat_id=chat_id,
+                text=f"Replay failed: `{e}`",
+                parse_mode="Markdown",
+            )
+        finally:
+            self._replay_task = None
+
+    def _build_help_text(self) -> str:
+        pairs = ", ".join(settings.symbols)
+        return (
+            "**🤖 Crypto Signal Bot v3.4 — Help**\n\n"
+            "**📋 Commands:**\n"
+            "/start — Запустить бота 🚀\n"
+            "/status — Статус бота 📊\n"
+            "/active — Активные сигналы 🔴\n"
+            "/pairs — Статистика по парам 📈\n"
+            "/signals — Последние 5 сигналов 📉\n"
+            "/stats — Статистика за 24 часа 📊\n"
+            "/export — Экспорт в CSV 📥\n"
+            "/replay [limit] — Replay live signals 🧪\n"
+            "/help — Эта справка ❓\n"
+            "/join — Канал с сигналами 📢\n\n"
+            "**🎯 Стратегии:**\n"
             "• Liquidity Sweep Reversal\n"
             "• Volatility Breakout\n\n"
-            "**Настройки:**\n"
-            f"Symbol: `{settings.symbol}`\n"
-            f"Mode: `{'testnet' if settings.testnet else 'live'}`\n\n"
-            "Bot sends signals when confidence ≥ 65%"
+            "**📊 Trading Pairs:**\n"
+            f"`{pairs}`\n\n"
+            "**⚙️ Настройки:**\n"
+            f"Mode: `{'testnet' if settings.testnet else 'live'}`\n"
+            f"Confidence: ≥ 65%\n"
+            f"Min RR: 2.0\n\n"
+            "**💡 Советы:**\n"
+            "• Используйте /active для отслеживания открытых сигналов\n"
+            "• /pairs покажет статистику по каждой паре\n"
+            "• /export выгрузит последние 100 сигналов в CSV"
         )

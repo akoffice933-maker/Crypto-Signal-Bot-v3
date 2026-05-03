@@ -10,8 +10,10 @@ _IMPORTANT_PATTERNS = (
     "Not tradeable",
     "Sweep signal",
     "Breakout signal",
+    "❌ SKIP:",
+    "✅ SIGNAL FOUND",
 )
-_CYCLE_MARKER = "Analysis cycle start"
+_CYCLE_MARKER = "ANALYSIS CYCLE START"
 
 
 def _tail_lines(path: Path, limit: int) -> list[str]:
@@ -38,18 +40,27 @@ def _cycle_summary(lines: list[str]) -> dict[str, str | None]:
     blocking_reason = None
     signal_state = "none"
 
-    for line in cycle_lines:
-        if "MarketContext(" in line:
-            if "tradeable=True" in line:
-                tradeable = "tradeable"
-            elif "tradeable=False" in line:
-                tradeable = "not tradeable"
-
-        if "Not tradeable:" in line:
+    for i, line in enumerate(cycle_lines):
+        # New format: "• Tradeable: False" or old format
+        if "Tradeable: True" in line or "tradeable=True" in line:
+            tradeable = "tradeable"
+        elif "Tradeable: False" in line or "tradeable=False" in line:
             tradeable = "not tradeable"
-            blocking_reason = line.split("Not tradeable:", 1)[1].strip() or None
 
-        if "Signal:" in line:
+        # New format: "❌ SKIP: Market not tradeable"
+        if "❌ SKIP:" in line or "Not tradeable:" in line:
+            tradeable = "not tradeable"
+            # Extract blockers from next line (new format has "  Blockers:" on next line)
+            if i + 1 < len(cycle_lines) and "Blockers:" in cycle_lines[i + 1]:
+                blocking_reason = cycle_lines[i + 1].split("Blockers:", 1)[1].strip()
+            elif "❌ SKIP:" in line:
+                # Fallback: try to extract from same line
+                blocking_reason = line.split("❌ SKIP:", 1)[1].strip()
+            elif "Not tradeable:" in line:
+                blocking_reason = line.split("Not tradeable:", 1)[1].strip()
+
+        # Signal detection (new and old format)
+        if "✅ SIGNAL FOUND" in line or "Signal:" in line:
             signal_state = "final signal"
         elif signal_state != "final signal" and (
             "Sweep signal" in line or "Breakout signal" in line

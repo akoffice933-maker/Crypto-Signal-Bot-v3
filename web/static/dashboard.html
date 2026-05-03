@@ -2,8 +2,9 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Crypto Signal Bot Dashboard</title>
+  <script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
   <style>
     :root {
       --bg: #f4efe6;
@@ -15,6 +16,21 @@
       --accent-2: #1f6a5a;
       --danger: #8f2d2d;
       --shadow: 0 18px 60px rgba(45, 34, 24, 0.12);
+      --chart-bg: rgba(255, 255, 255, 0.5);
+      --chart-grid: rgba(30, 31, 28, 0.1);
+    }
+    [data-theme="dark"] {
+      --bg: #0d1117;
+      --card: rgba(22, 27, 34, 0.85);
+      --ink: #e6edf3;
+      --muted: #8b949e;
+      --line: rgba(240, 246, 252, 0.1);
+      --accent: #f0883e;
+      --accent-2: #3fb950;
+      --danger: #f85149;
+      --shadow: 0 18px 60px rgba(0, 0, 0, 0.4);
+      --chart-bg: rgba(13, 17, 23, 0.5);
+      --chart-grid: rgba(240, 246, 252, 0.1);
     }
     * { box-sizing: border-box; }
     body {
@@ -26,6 +42,13 @@
         radial-gradient(circle at top left, rgba(217, 108, 61, 0.18), transparent 28%),
         radial-gradient(circle at bottom right, rgba(31, 106, 90, 0.16), transparent 24%),
         linear-gradient(135deg, #ede3d2 0%, #f7f3ec 100%);
+      transition: background 0.3s ease;
+    }
+    [data-theme="dark"] body {
+      background:
+        radial-gradient(circle at top left, rgba(240, 136, 62, 0.15), transparent 28%),
+        radial-gradient(circle at bottom right, rgba(63, 185, 80, 0.12), transparent 24%),
+        linear-gradient(135deg, #0d1117 0%, #161b22 100%);
     }
     .shell {
       max-width: 1180px;
@@ -75,6 +98,57 @@
       color: var(--muted);
       font-size: 1.02rem;
       line-height: 1.6;
+    }
+    .theme-toggle {
+      margin-left: auto;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      padding: 8px 12px;
+      background: var(--card);
+      color: var(--ink);
+      font-size: 1.2rem;
+      cursor: pointer;
+      backdrop-filter: blur(10px);
+      transition: all 0.2s;
+    }
+    .theme-toggle:hover {
+      background: var(--accent);
+      border-color: var(--accent);
+    }
+    
+    /* Mobile Navigation */
+    .mobile-menu-toggle {
+      display: none;
+      font-size: 1.5rem;
+      background: none;
+      border: none;
+      color: var(--ink);
+      cursor: pointer;
+      padding: 8px;
+    }
+    .nav-links {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .nav-links.mobile-open {
+      flex-direction: column;
+      align-items: stretch;
+      position: absolute;
+      top: 60px;
+      left: 0;
+      right: 0;
+      background: var(--card);
+      padding: 16px;
+      border-bottom: 1px solid var(--line);
+      box-shadow: var(--shadow);
+    }
+    .nav-links.mobile-open a,
+    .nav-links.mobile-open .theme-toggle {
+      width: 100%;
+      text-align: center;
+      margin: 4px 0;
     }
     .grid {
       display: grid;
@@ -271,21 +345,320 @@
     .log-line.candidate {
       color: #ffc36b;
     }
+    
+    /* Active Signals Cards */
+    .active-signals-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 16px;
+    }
+    .active-signal-card {
+      background: rgba(255,255,255,0.7);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 16px;
+    }
+    .active-signal-card.long {
+      border-left: 4px solid var(--accent-2);
+    }
+    .active-signal-card.short {
+      border-left: 4px solid var(--danger);
+    }
+    .signal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    .signal-pair {
+      font-size: 1.2rem;
+      font-weight: 700;
+    }
+    .signal-direction.long {
+      color: var(--accent-2);
+    }
+    .signal-direction.short {
+      color: var(--danger);
+    }
+    .signal-metrics {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .signal-metric {
+      background: rgba(255,255,255,0.5);
+      padding: 8px;
+      border-radius: 8px;
+    }
+    .signal-metric-key {
+      font: 700 0.65rem/1 "Consolas", monospace;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+    .signal-metric-value {
+      font-size: 1rem;
+      font-weight: 700;
+    }
+    .pnl-positive { color: var(--accent-2); }
+    .pnl-negative { color: var(--danger); }
+    .progress-bar {
+      height: 8px;
+      background: rgba(0,0,0,0.1);
+      border-radius: 4px;
+      overflow: hidden;
+      margin: 8px 0;
+    }
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent), var(--accent-2));
+      transition: width 0.3s;
+    }
+    .signal-footer {
+      display: flex;
+      justify-content: space-between;
+      font: 700 0.7rem/1 "Consolas", monospace;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: var(--muted);
+    }
+    
+    /* Mobile Responsive - Fixed Layout */
     @media (max-width: 900px) {
-      .metric, .panel, .table-panel { grid-column: span 12; }
+      * {
+        box-sizing: border-box !important;
+      }
+      html, body {
+        overflow-x: hidden !important;
+        width: 100% !important;
+        max-width: 100% !important;
+      }
+      .shell {
+        width: 100% !important;
+        max-width: 100% !important;
+        padding: 10px !important;
+        margin: 0 !important;
+      }
+      .mobile-menu-toggle {
+        display: block !important;
+        position: fixed !important;
+        top: 10px !important;
+        left: 10px !important;
+        z-index: 1000 !important;
+        background: var(--card) !important;
+        border: 1px solid var(--line) !important;
+        border-radius: 8px !important;
+        padding: 8px 12px !important;
+      }
+      nav {
+        position: relative !important;
+        height: 50px !important;
+      }
+      .nav-links {
+        display: none !important;
+        position: fixed !important;
+        top: 60px !important;
+        left: 0 !important;
+        right: 0 !important;
+        background: var(--card) !important;
+        padding: 16px !important;
+        border-bottom: 1px solid var(--line) !important;
+        box-shadow: var(--shadow) !important;
+        z-index: 999 !important;
+        flex-direction: column !important;
+        gap: 8px !important;
+      }
+      .nav-links.mobile-open {
+        display: flex !important;
+      }
+      .nav-links a, .nav-links .theme-toggle {
+        width: 100% !important;
+        text-align: center !important;
+        padding: 12px !important;
+        margin: 0 !important;
+      }
+      .hero {
+        margin-top: 60px !important;
+      }
+      .hero h1 {
+        font-size: 1.4rem !important;
+        line-height: 1.2 !important;
+      }
+      .hero .lede {
+        font-size: 0.85rem !important;
+        line-height: 1.4 !important;
+      }
+      .grid {
+        display: flex !important;
+        flex-direction: column !important;
+        gap: 10px !important;
+        width: 100% !important;
+      }
+      .card {
+        width: 100% !important;
+        max-width: 100% !important;
+        padding: 12px !important;
+        margin: 0 !important;
+      }
+      .metric {
+        width: 100% !important;
+        min-height: 90px !important;
+        padding: 10px !important;
+      }
+      .metric .value {
+        font-size: 1.5rem !important;
+      }
+      .metric .label {
+        font-size: 0.65rem !important;
+      }
+      .toolbar {
+        display: flex !important;
+        flex-direction: column !important;
+        gap: 6px !important;
+        width: 100% !important;
+      }
+      .toolbar > * {
+        width: 100% !important;
+        max-width: 100% !important;
+      }
+      .toolbar select, .toolbar button, .toolbar input {
+        height: 40px !important;
+        font-size: 0.9rem !important;
+      }
+      .toolbar .toggle {
+        display: flex !important;
+        justify-content: center !important;
+        align-items: center !important;
+      }
+      table {
+        font-size: 0.7rem !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        overflow-x: auto !important;
+        display: block !important;
+      }
+      thead {
+        display: table-header-group !important;
+      }
+      tbody {
+        display: table-row-group !important;
+      }
+      th, td {
+        padding: 4px 2px !important;
+        white-space: nowrap !important;
+      }
+      .active-signals-grid {
+        display: flex !important;
+        flex-direction: column !important;
+        gap: 10px !important;
+      }
+      .active-signal-card {
+        width: 100% !important;
+      }
+      #chart-container {
+        width: 100% !important;
+        max-width: 100% !important;
+        height: 250px !important;
+        min-height: 250px !important;
+        position: relative !important;
+        overflow: hidden !important;
+      }
+      /* Fix chart canvas sizing */
+      #chart-container canvas {
+        width: 100% !important;
+        height: 100% !important;
+      }
+      .summary-grid {
+        display: flex !important;
+        flex-direction: column !important;
+        gap: 8px !important;
+      }
+      .summary-row {
+        width: 100% !important;
+        padding: 8px !important;
+      }
+      .log-box {
+        font-size: 0.7rem !important;
+        max-height: 300px !important;
+      }
+      .signal-metrics {
+        grid-template-columns: 1fr 1fr !important;
+        gap: 6px !important;
+      }
+      .signal-metric-value {
+        font-size: 0.85rem !important;
+      }
+    }
+    
+    /* Small phones */
+    @media (max-width: 480px) {
+      .shell {
+        padding: 6px !important;
+      }
+      .mobile-menu-toggle {
+        top: 6px !important;
+        left: 6px !important;
+        padding: 6px 10px !important;
+        font-size: 1.2rem !important;
+      }
+      .hero {
+        margin-top: 50px !important;
+      }
+      .hero h1 {
+        font-size: 1.2rem !important;
+      }
+      .hero .lede {
+        font-size: 0.8rem !important;
+      }
+      .metric {
+        min-height: 80px !important;
+        padding: 8px !important;
+      }
+      .metric .value {
+        font-size: 1.2rem !important;
+      }
+      .metric .label {
+        font-size: 0.6rem !important;
+      }
+      .card {
+        padding: 8px !important;
+      }
+      #chart-container {
+        height: 200px !important;
+        min-height: 200px !important;
+      }
+      .signal-metrics {
+        grid-template-columns: 1fr !important;
+      }
+      .toolbar select, .toolbar button, .toolbar input {
+        height: 36px !important;
+        font-size: 0.85rem !important;
+      }
     }
   </style>
 </head>
 <body>
   <div class="shell">
     <nav>
-      <a href="/dashboard" class="active">Dashboard</a>
-      <a href="/signals/">Signals</a>
-      <a href="/logs">Logs</a>
-      <a href="/settings">Settings</a>
-      <a href="/backtest">Backtest</a>
+      <button class="mobile-menu-toggle" id="mobile-menu-toggle" aria-label="Toggle menu">☰</button>
+      <div class="nav-links" id="nav-links">
+        <a href="/dashboard" class="active">Dashboard</a>
+        <a href="/signals/">Signals</a>
+        <a href="/replay">Replay</a>
+        <a href="/logs">Logs</a>
+        <a href="/settings">Settings</a>
+        <a href="/backtest">Backtest</a>
+        <button id="theme-toggle" class="theme-toggle" title="Toggle dark/light theme">
+          <span class="theme-icon">🌙</span>
+        </button>
+      </div>
     </nav>
-  
+
     <section class="hero">
       <div class="eyebrow">Operational Console</div>
       <h1>Signal flow with enough context to act.</h1>
@@ -317,8 +690,19 @@
       <article class="card panel">
         <div class="toolbar">
           <span class="status" id="db-status">db unknown</span>
+          <select id="pair-filter">
+            <option value="">All pairs</option>
+            <option value="BTCUSDT">BTCUSDT</option>
+            <option value="ETHUSDT">ETHUSDT</option>
+            <option value="SOLUSDT">SOLUSDT</option>
+            <option value="BNBUSDT">BNBUSDT</option>
+          </select>
           <button id="refresh-btn">Refresh</button>
           <button id="csv-btn" class="alt">Export CSV</button>
+          <label class="toggle" title="Enable browser notifications for new signals">
+            <input type="checkbox" id="notifications-toggle">
+            🔔 Notifications
+          </label>
         </div>
         <div class="muted mono" id="metrics-raw">/metrics loading...</div>
       </article>
@@ -352,8 +736,51 @@
         </div>
       </article>
 
+      <article class="card" style="grid-column: span 12;">
+        <div class="toolbar">
+          <span class="status">Price Chart</span>
+          <select id="chart-pair">
+            <option value="BTCUSDT">BTCUSDT</option>
+            <option value="ETHUSDT">ETHUSDT</option>
+            <option value="SOLUSDT">SOLUSDT</option>
+            <option value="BNBUSDT">BNBUSDT</option>
+          </select>
+          <select id="chart-timeframe">
+            <option value="15m">15m</option>
+            <option value="1h">1h</option>
+            <option value="4h">4h</option>
+            <option value="1d">1d</option>
+          </select>
+        </div>
+        <div id="chart-container" style="height: 250px; width: 100%; position: relative;"></div>
+      </article>
+
+      <article class="card" style="grid-column: span 12;">
+        <div class="toolbar">
+          <span class="status">Active Signals</span>
+          <select id="active-pair">
+            <option value="">All pairs</option>
+            <option value="BTCUSDT">BTCUSDT</option>
+            <option value="ETHUSDT">ETHUSDT</option>
+            <option value="SOLUSDT">SOLUSDT</option>
+            <option value="BNBUSDT">BNBUSDT</option>
+          </select>
+          <button id="refresh-active-btn">Refresh</button>
+        </div>
+        <div id="active-signals-container">
+          <div class="loading">Loading active signals...</div>
+        </div>
+      </article>
+
       <article class="card table-panel">
         <div class="toolbar">
+          <select id="pair-filter-table">
+            <option value="">All pairs</option>
+            <option value="BTCUSDT">BTCUSDT</option>
+            <option value="ETHUSDT">ETHUSDT</option>
+            <option value="SOLUSDT">SOLUSDT</option>
+            <option value="BNBUSDT">BNBUSDT</option>
+          </select>
           <select id="strategy-filter">
             <option value="">All strategies</option>
             <option value="sweep_reversal">Sweep reversal</option>
@@ -368,6 +795,7 @@
         <table>
           <thead>
             <tr>
+              <th>Pair</th>
               <th>Created</th>
               <th>Strategy</th>
               <th>Direction</th>
@@ -418,15 +846,17 @@
     }
 
     async function refresh() {
+      const pair = document.getElementById("pair-filter-table").value;
       const strategy = document.getElementById("strategy-filter").value;
       const direction = document.getElementById("direction-filter").value;
       const query = new URLSearchParams({ limit: "20" });
+      if (pair) query.set("pair", pair);
       if (strategy) query.set("strategy", strategy);
       if (direction) query.set("direction", direction);
 
       const [health, signals, metricsResp, cycleSummary] = await Promise.all([
         fetchJson("/health"),
-        fetchJson(`/signals/?${query.toString()}`),
+        fetchJson(`/signals/api?${query.toString()}`),
         fetch("/metrics"),
         fetchJson("/logs/summary"),
       ]);
@@ -466,6 +896,7 @@
       for (const row of state.signals) {
         const tr = document.createElement("tr");
         tr.innerHTML = `
+          <td class="mono"><strong>${row.pair || "BTCUSDT"}</strong></td>
           <td class="mono">${row.created_at}</td>
           <td>${row.strategy}</td>
           <td>${row.direction}</td>
@@ -564,8 +995,26 @@
     document.getElementById("refresh-btn").addEventListener("click", () => refresh().catch(showError));
     document.getElementById("csv-btn").addEventListener("click", () => exportCsv().catch(showError));
     document.getElementById("sync-btn").addEventListener("click", () => syncSheets().catch(showError));
+    document.getElementById("pair-filter-table").addEventListener("change", () => refresh().catch(showError));
     document.getElementById("strategy-filter").addEventListener("change", () => refresh().catch(showError));
     document.getElementById("direction-filter").addEventListener("change", () => refresh().catch(showError));
+    document.getElementById("notifications-toggle").addEventListener("change", () => {}); // Handler already in init
+    
+    // Mobile menu toggle
+    const mobileMenuToggle = document.getElementById("mobile-menu-toggle");
+    const navLinks = document.getElementById("nav-links");
+    mobileMenuToggle.addEventListener("click", () => {
+      navLinks.classList.toggle("mobile-open");
+      mobileMenuToggle.textContent = navLinks.classList.contains("mobile-open") ? "✕" : "☰";
+    });
+    
+    // Close mobile menu when clicking a link
+    document.querySelectorAll(".nav-links a").forEach(link => {
+      link.addEventListener("click", () => {
+        navLinks.classList.remove("mobile-open");
+        mobileMenuToggle.textContent = "☰";
+      });
+    });
     document.getElementById("tab-important").addEventListener("click", () => {
       state.activeLogTab = "important";
       renderLogs();
@@ -577,6 +1026,340 @@
     document.getElementById("last-cycle-toggle").addEventListener("change", (event) => {
       state.lastCycleOnly = event.target.checked;
       refreshLogs().catch(showError);
+    });
+    document.getElementById("refresh-active-btn").addEventListener("click", () => loadActiveSignals().catch(showError));
+    document.getElementById("active-pair").addEventListener("change", () => loadActiveSignals().catch(showError));
+    document.getElementById("chart-pair").addEventListener("change", () => {
+      loadChart().catch(showError);
+      // Sync active signals pair with chart pair
+      document.getElementById("active-pair").value = document.getElementById("chart-pair").value;
+      loadActiveSignals().catch(showError);
+    });
+    document.getElementById("chart-timeframe").addEventListener("change", () => loadChart().catch(showError));
+
+    // ── Chart & Active Signals ───────────────────────────────────
+    let chart = null;
+    let candleSeries = null;
+    const priceCache = new Map();  // Cache prices for 10 seconds
+    const PRICE_CACHE_TTL = 10000;  // 10 seconds
+
+    async function getCachedPrice(symbol) {
+      const cached = priceCache.get(symbol);
+      if (cached && Date.now() - cached.timestamp < PRICE_CACHE_TTL) {
+        return cached.price;
+      }
+      try {
+        const priceData = await fetchJson(`/market/price?symbol=${symbol}`);
+        priceCache.set(symbol, { price: priceData.price, timestamp: Date.now() });
+        return priceData.price;
+      } catch (e) {
+        return cached?.price || null;  // Return stale price if available
+      }
+    }
+
+    async function loadChart() {
+      const symbol = document.getElementById("chart-pair").value;
+      const interval = document.getElementById("chart-timeframe").value;
+
+      try {
+        const candles = await fetchJson(`/market/candles?symbol=${symbol}&interval=${interval}&limit=200`);
+        if (!candles || candles.length === 0) return;
+
+        // Initialize chart if not exists
+        if (!chart) {
+          const container = document.getElementById("chart-container");
+          const containerWidth = container.clientWidth || container.offsetWidth;
+          const containerHeight = container.clientHeight || 250;
+          
+          chart = LightweightCharts.createChart(container, {
+            width: containerWidth,
+            height: containerHeight,
+            layout: {
+              background: { color: 'transparent' },
+              textColor: '#5c6258',
+            },
+            grid: {
+              vertLines: { color: 'rgba(30, 31, 28, 0.1)' },
+              horzLines: { color: 'rgba(30, 31, 28, 0.1)' },
+            },
+            crosshair: {
+              mode: LightweightCharts.CrosshairMode.Normal,
+            },
+            timeScale: {
+              borderColor: 'rgba(30, 31, 28, 0.1)',
+              timeVisible: true,
+              secondsVisible: false,
+              fixLeftEdge: true,
+              fixRightEdge: true,
+            },
+            rightPriceScale: {
+              borderColor: 'rgba(30, 31, 28, 0.1)',
+              autoScale: true,
+            },
+          });
+          
+          candleSeries = chart.addCandlestickSeries({
+            upColor: '#1f6a5a',
+            downColor: '#8f2d2d',
+            borderVisible: false,
+            wickUpColor: '#1f6a5a',
+            wickDownColor: '#8f2d2d',
+          });
+        }
+        
+        candleSeries.setData(candles);
+        
+        // Proper resize handler
+        const resizeObserver = new ResizeObserver(entries => {
+          if (!chart || entries.length === 0) return;
+          
+          const { width, height } = entries[0].contentRect;
+          if (width > 0 && height > 0) {
+            chart.applyOptions({
+              width: width,
+              height: height,
+            });
+          }
+        });
+        
+        const container = document.getElementById("chart-container");
+        resizeObserver.observe(container);
+        
+        // Store observer for cleanup
+        window.chartResizeObserver = resizeObserver;
+        
+      } catch (error) {
+        console.error("Chart load error:", error);
+      }
+    }
+
+    async function loadActiveSignals() {
+      const container = document.getElementById("active-signals-container");
+      const selectedPair = document.getElementById("active-pair").value;  // Get selected pair from active-pair selector
+
+      // Add loading indicator
+      let loadingIndicator = container.querySelector('.loading-indicator');
+      if (!loadingIndicator) {
+        loadingIndicator = document.createElement('div');
+        loadingIndicator.className = 'loading loading-indicator';
+        loadingIndicator.textContent = 'Updating...';
+        container.appendChild(loadingIndicator);
+      }
+
+      try {
+        // Filter by selected pair (empty = all pairs)
+        const pairParam = selectedPair ? `?pair=${selectedPair}` : '';
+        const signals = await fetchJson(`/signals/active${pairParam}`);
+
+        // Remove loading indicator
+        loadingIndicator.remove();
+
+        if (!signals || signals.length === 0) {
+          // Clear container and show "no signals" message
+          const pairText = selectedPair ? ` for ${selectedPair}` : '';
+          container.innerHTML = `<div class="loading">No active signals${pairText}</div>`;
+          return;
+        }
+
+        // Fetch current prices with caching
+        const signalsWithPrice = await Promise.all(
+          signals.map(async (sig) => {
+            const price = await getCachedPrice(sig.pair);
+            sig.current_price = price;
+
+            // Calculate PnL
+            if (price && sig.entry_price) {
+              if (sig.direction === "LONG") {
+                sig.pnl_pct = ((price - sig.entry_price) / sig.entry_price) * 100;
+                sig.progress_to_tp = (price - sig.entry_price) / (sig.take_profit - sig.entry_price);
+              } else {
+                sig.pnl_pct = ((sig.entry_price - price) / sig.entry_price) * 100;
+                sig.progress_to_tp = (sig.entry_price - price) / (sig.entry_price - sig.stop_loss);
+              }
+              sig.distance_to_sl = Math.abs(price - sig.stop_loss) / sig.entry_price * 100;
+            }
+            return sig;
+          })
+        );
+
+        renderActiveSignals(signalsWithPrice);
+      } catch (error) {
+        console.error("Active signals load error:", error);
+        // Don't clear on error - preserve existing content
+        loadingIndicator.textContent = '⚠️ Update failed';
+        setTimeout(() => {
+          const el = container.querySelector('.loading-indicator');
+          if (el) el.remove();
+        }, 2000);
+      }
+    }
+
+    function renderActiveSignals(signals) {
+      const container = document.getElementById("active-signals-container");
+      
+      // Always recreate grid to ensure clean render
+      container.innerHTML = '<div class="active-signals-grid"></div>';
+      const grid = container.querySelector(".active-signals-grid");
+
+      for (const sig of signals) {
+        const card = document.createElement("div");
+        card.className = `active-signal-card ${sig.direction.toLowerCase()}`;
+
+        const pnlClass = sig.pnl_pct >= 0 ? "pnl-positive" : "pnl-negative";
+        const pnlText = sig.pnl_pct !== null ? `${sig.pnl_pct >= 0 ? "+" : ""}${sig.pnl_pct.toFixed(2)}%` : "N/A";
+        const progressPct = Math.min(100, Math.max(0, (sig.progress_to_tp || 0) * 100));
+
+        card.innerHTML = `
+          <div class="signal-header">
+            <span class="signal-pair">${sig.pair}</span>
+            <span class="signal-direction ${sig.direction.toLowerCase()}">${sig.direction}</span>
+          </div>
+          <div class="signal-metrics">
+            <div class="signal-metric">
+              <div class="signal-metric-key">Entry</div>
+              <div class="signal-metric-value">${sig.entry_price?.toFixed(2) || "N/A"}</div>
+            </div>
+            <div class="signal-metric">
+              <div class="signal-metric-key">Current</div>
+              <div class="signal-metric-value">${sig.current_price?.toFixed(2) || "N/A"}</div>
+            </div>
+            <div class="signal-metric">
+              <div class="signal-metric-key">PnL</div>
+              <div class="signal-metric-value ${pnlClass}">${pnlText}</div>
+            </div>
+            <div class="signal-metric">
+              <div class="signal-metric-key">RR</div>
+              <div class="signal-metric-value">${sig.rr_ratio?.toFixed(2) || "N/A"}</div>
+            </div>
+          </div>
+          <div class="signal-metric" style="margin-bottom: 8px;">
+            <div class="signal-metric-key">Progress to TP</div>
+            <div class="progress-bar">
+              <div class="progress-fill" style="width: ${progressPct}%"></div>
+            </div>
+          </div>
+          <div class="signal-footer">
+            <span>SL: ${sig.stop_loss?.toFixed(2) || "N/A"}</span>
+            <span>TP: ${sig.take_profit?.toFixed(2) || "N/A"}</span>
+          </div>
+        `;
+        grid.appendChild(card);
+      }
+    }
+
+    // Sync active-pair with chart-pair on load FIRST
+    document.getElementById("active-pair").value = document.getElementById("chart-pair").value;
+    
+    // Load chart and active signals on page load (parallel)
+    Promise.all([
+      loadChart().catch(console.error),
+      loadActiveSignals().catch(console.error),
+      refresh().catch(console.error),
+    ]);
+    
+    // Refresh active signals every 30 seconds (reduced from 15s)
+    setInterval(() => loadActiveSignals().catch(console.error), 30000);
+    // Refresh logs every 10 seconds
+    setInterval(() => refreshLogs().catch(console.error), 10000);
+
+    // ── Browser Notifications ───────────────────────────────────
+    const notificationsToggle = document.getElementById("notifications-toggle");
+    let lastSignalCount = 0;
+    let lastSignalId = null;
+    
+    // Load saved notification preference
+    const notificationsEnabled = localStorage.getItem("notifications") === "true";
+    notificationsToggle.checked = notificationsEnabled;
+    
+    if (notificationsEnabled && "Notification" in window) {
+      Notification.requestPermission();
+    }
+    
+    notificationsToggle.addEventListener("change", async () => {
+      const enabled = notificationsToggle.checked;
+      localStorage.setItem("notifications", enabled);
+      
+      if (enabled) {
+        if (!("Notification" in window)) {
+          alert("Your browser does not support notifications");
+          notificationsToggle.checked = false;
+          return;
+        }
+        const permission = await Notification.requestPermission();
+        if (permission !== "granted") {
+          notificationsToggle.checked = false;
+          localStorage.setItem("notifications", "false");
+        } else {
+          new Notification("Crypto Signal Bot", {
+            body: "Notifications enabled! You'll be alerted when new signals appear.",
+            icon: "/favicon.ico",
+          });
+        }
+      }
+    });
+    
+    // Check for new signals and notify
+    async function checkForNewSignals() {
+      if (!notificationsToggle.checked) return;
+      
+      try {
+        const signals = await fetchJson("/signals/api?limit=1");
+        if (signals && signals.length > 0) {
+          const currentSignalId = signals[0].signal_id || signals[0].created_at;
+          
+          // New signal detected
+          if (lastSignalId && currentSignalId !== lastSignalId) {
+            const signal = signals[0];
+            const emoji = signal.direction === "LONG" ? "🟢" : "🔴";
+            
+            if ("Notification" in window && Notification.permission === "granted") {
+              new Notification(`New Signal: ${signal.pair} ${emoji}`, {
+                body: `${signal.strategy} - Entry: ${signal.entry_market?.toFixed(2)} - RR: ${signal.rr_ratio?.toFixed(2)}`,
+                icon: "/favicon.ico",
+                tag: currentSignalId,
+              });
+            }
+          }
+          
+          lastSignalId = currentSignalId;
+        }
+      } catch (error) {
+        console.error("Error checking for new signals:", error);
+      }
+    }
+    
+    // Check for new signals every 30 seconds
+    setInterval(checkForNewSignals, 30000);
+
+    // ── Theme Toggle ───────────────────────────────────────────
+    const themeToggle = document.getElementById("theme-toggle");
+    const themeIcon = themeToggle.querySelector(".theme-icon");
+    
+    // Load saved theme
+    const savedTheme = localStorage.getItem("theme") || "light";
+    document.documentElement.setAttribute("data-theme", savedTheme);
+    themeIcon.textContent = savedTheme === "dark" ? "☀️" : "🌙";
+    
+    themeToggle.addEventListener("click", () => {
+      const currentTheme = document.documentElement.getAttribute("data-theme");
+      const newTheme = currentTheme === "dark" ? "light" : "dark";
+      document.documentElement.setAttribute("data-theme", newTheme);
+      localStorage.setItem("theme", newTheme);
+      themeIcon.textContent = newTheme === "dark" ? "☀️" : "🌙";
+      
+      // Update chart colors if exists
+      if (chart) {
+        chart.applyOptions({
+          layout: {
+            textColor: newTheme === "dark" ? "#e6edf3" : "#5c6258",
+            background: { color: newTheme === "dark" ? "transparent" : "transparent" },
+          },
+          grid: {
+            vertLines: { color: newTheme === "dark" ? "rgba(240, 246, 252, 0.1)" : "rgba(30, 31, 28, 0.1)" },
+            horzLines: { color: newTheme === "dark" ? "rgba(240, 246, 252, 0.1)" : "rgba(30, 31, 28, 0.1)" },
+          },
+        });
+      }
     });
 
     function showError(error) {

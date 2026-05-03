@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -33,6 +34,38 @@ class Database:
     async def _apply_schema(self):
         sql = _SCHEMA_PATH.read_text()
         await self._conn.executescript(sql)
+        await self._ensure_column("signals", "rr_market", "REAL")
+        await self._ensure_column("signals", "rr_limit", "REAL")
+        await self._ensure_column("signals", "execution_basis", "TEXT")
+        await self._ensure_column("signals", "tp1_price", "REAL")
+        await self._ensure_column("signals", "tp1_rr", "REAL")
+        await self._ensure_column("signals", "tp1_size_pct", "REAL")
+        await self._ensure_column("signals", "final_tp_size_pct", "REAL")
+        await self._ensure_column("cycle_summary", "rr_market", "REAL")
+        await self._ensure_column("cycle_summary", "rr_limit", "REAL")
+        await self._ensure_column("cycle_summary", "execution_basis", "TEXT")
+        await self._ensure_column("cycle_summary", "tp1_price", "REAL")
+        await self._ensure_column("cycle_summary", "tp1_rr", "REAL")
+        await self._ensure_column("cycle_summary", "tp1_size_pct", "REAL")
+        await self._ensure_column("cycle_summary", "final_tp_size_pct", "REAL")
+        await self._ensure_column("oi_snapshots", "pair", "TEXT NOT NULL DEFAULT ''")
+        await self._conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_oi_pair_recorded ON oi_snapshots(pair, recorded_at DESC)"
+        )
+        await self._conn.execute(
+            "UPDATE signals SET liquidation_cascade = 0 WHERE liquidation_cascade IS NULL"
+        )
+        await self._conn.execute(
+            "UPDATE signals SET squeeze_active = 0 WHERE squeeze_active IS NULL"
+        )
+        await self._conn.commit()
+
+    async def _ensure_column(self, table: str, column: str, definition: str):
+        rows = await self._fetch(f"PRAGMA table_info({table})")
+        existing = {row[1] for row in rows}
+        if column not in existing:
+            await self._conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+            await self._conn.commit()
 
     async def close(self):
         if self._conn:
@@ -65,10 +98,32 @@ class Database:
     # ── Signals ───────────────────────────────────────────────
 
     async def save_signal(self, s: Dict) -> int:
+        payload = dict(s)
+        payload.setdefault("tp1_price", None)
+        payload.setdefault("tp1_rr", None)
+        payload.setdefault("tp1_size_pct", None)
+        payload.setdefault("final_tp_size_pct", None)
+        payload.setdefault("rr_market", None)
+        payload.setdefault("rr_limit", None)
+        payload.setdefault("execution_basis", None)
+        payload.setdefault("liquidation_cascade", 0)
+        payload.setdefault("squeeze_active", 0)
+
+        for key in ("liquidation_cascade", "squeeze_active"):
+            if key in payload and payload[key] is not None:
+                payload[key] = int(bool(payload[key]))
+
+        breakdown = payload.get("confidence_breakdown")
+        if breakdown is not None and not isinstance(breakdown, str):
+            payload["confidence_breakdown"] = json.dumps(breakdown)
+
         return await self._exec("""
             INSERT OR IGNORE INTO signals (
                 signal_id, pair, strategy, direction, session,
-                entry_market, entry_limit, stop_loss, take_profit, rr_ratio,
+                entry_market, entry_limit, stop_loss,
+                tp1_price, tp1_rr, tp1_size_pct, final_tp_size_pct,
+                take_profit, rr_ratio,
+                rr_market, rr_limit, execution_basis,
                 position_size_pct, confidence_score, confidence_breakdown,
                 market_state, volatility_regime, adx_value, atr_pct,
                 target_liquidity_price, target_liquidity_tf, target_liquidity_type,
@@ -76,24 +131,89 @@ class Database:
                 liquidation_cascade, funding_rate, squeeze_active
             ) VALUES (
                 :signal_id, :pair, :strategy, :direction, :session,
-                :entry_market, :entry_limit, :stop_loss, :take_profit, :rr_ratio,
+                :entry_market, :entry_limit, :stop_loss,
+                :tp1_price, :tp1_rr, :tp1_size_pct, :final_tp_size_pct,
+                :take_profit, :rr_ratio,
+                :rr_market, :rr_limit, :execution_basis,
                 :position_size_pct, :confidence_score, :confidence_breakdown,
                 :market_state, :volatility_regime, :adx_value, :atr_pct,
                 :target_liquidity_price, :target_liquidity_tf, :target_liquidity_type,
                 :distance_to_target_pct, :cvd_divergence, :oi_change_pct,
                 :liquidation_cascade, :funding_rate, :squeeze_active
             )
-        """, s)
+        """, payload)
+
+    async def save_cycle_summary(self, summary: Dict[str, Any]) -> int:
+        payload = dict(summary)
+        payload.setdefault("rr_market", None)
+        payload.setdefault("rr_limit", None)
+        payload.setdefault("execution_basis", None)
+        payload.setdefault("tp1_price", None)
+        payload.setdefault("tp1_rr", None)
+        payload.setdefault("tp1_size_pct", None)
+        payload.setdefault("final_tp_size_pct", None)
+
+        for key in (
+            "tradeable",
+            "squeeze_active",
+            "liquidation_cascade",
+            "sweep_candidate",
+            "breakout_candidate",
+            "cooldown_hit",
+        ):
+            if key in payload and payload[key] is not None:
+                payload[key] = int(bool(payload[key]))
+
+        breakdown = payload.get("confidence_breakdown")
+        if breakdown is not None and not isinstance(breakdown, str):
+            payload["confidence_breakdown"] = json.dumps(breakdown)
+
+        return await self._exec("""
+            INSERT OR REPLACE INTO cycle_summary (
+                cycle_id, created_at, pair, analysis_time_utc,
+                session, hour_utc, market_state, volatility_regime, operating_mode,
+                tradeable, adx_value, atr_pct, current_price,
+                candles_15m, candles_4h, candles_1d,
+                liquidity_levels_found, liquidity_levels_eligible, liquidity_levels_filtered,
+                squeeze_active, funding_rate, oi_change_pct, liquidation_cascade, cvd_divergence,
+                sweep_candidate, breakout_candidate,
+                confidence_score, confidence_threshold, confidence_stage, confidence_breakdown,
+                final_status, final_reason, blocker_reason,
+                signal_id, signal_strategy, signal_direction,
+                tp1_price, tp1_rr, tp1_size_pct, final_tp_size_pct,
+                rr_ratio,
+                rr_market, rr_limit, execution_basis,
+                cooldown_hit, strategy_version
+            ) VALUES (
+                :cycle_id, :created_at, :pair, :analysis_time_utc,
+                :session, :hour_utc, :market_state, :volatility_regime, :operating_mode,
+                :tradeable, :adx_value, :atr_pct, :current_price,
+                :candles_15m, :candles_4h, :candles_1d,
+                :liquidity_levels_found, :liquidity_levels_eligible, :liquidity_levels_filtered,
+                :squeeze_active, :funding_rate, :oi_change_pct, :liquidation_cascade, :cvd_divergence,
+                :sweep_candidate, :breakout_candidate,
+                :confidence_score, :confidence_threshold, :confidence_stage, :confidence_breakdown,
+                :final_status, :final_reason, :blocker_reason,
+                :signal_id, :signal_strategy, :signal_direction,
+                :tp1_price, :tp1_rr, :tp1_size_pct, :final_tp_size_pct,
+                :rr_ratio,
+                :rr_market, :rr_limit, :execution_basis,
+                :cooldown_hit, :strategy_version
+            )
+        """, payload)
 
     async def get_signals_for_export(
         self,
         limit: int = 500,
         direction: Optional[str] = None,
         strategy: Optional[str] = None,
+        pair: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         query = """
             SELECT signal_id, created_at, pair, strategy, direction, session,
-                   entry_market, entry_limit, stop_loss, take_profit, rr_ratio,
+                   entry_market, entry_limit, stop_loss,
+                   tp1_price, tp1_rr, tp1_size_pct, final_tp_size_pct,
+                   take_profit, rr_ratio, rr_market, rr_limit, execution_basis,
                    confidence_score, market_state, volatility_regime,
                    target_liquidity_price, target_liquidity_tf, target_liquidity_type,
                    cvd_divergence, oi_change_pct, liquidation_cascade, funding_rate,
@@ -108,12 +228,17 @@ class Database:
         if strategy:
             query += " AND strategy=?"
             params.append(strategy)
+        if pair:
+            query += " AND pair=?"
+            params.append(pair.upper())
         query += " ORDER BY created_at DESC LIMIT ?"
         params.append(limit)
         rows = await self._fetch(query, tuple(params))
         cols = [
             "signal_id", "created_at", "pair", "strategy", "direction", "session",
-            "entry_market", "entry_limit", "stop_loss", "take_profit", "rr_ratio",
+            "entry_market", "entry_limit", "stop_loss",
+            "tp1_price", "tp1_rr", "tp1_size_pct", "final_tp_size_pct",
+            "take_profit", "rr_ratio", "rr_market", "rr_limit", "execution_basis",
             "confidence_score", "market_state", "volatility_regime",
             "target_liquidity_price", "target_liquidity_tf", "target_liquidity_type",
             "cvd_divergence", "oi_change_pct", "liquidation_cascade", "funding_rate",
@@ -245,23 +370,23 @@ class Database:
 
     # ── OI snapshots ──────────────────────────────────────────
 
-    async def save_oi(self, oi: float, price: float):
+    async def save_oi(self, pair: str, oi: float, price: float):
         await self._exec(
-            "INSERT INTO oi_snapshots (open_interest, price) VALUES (?,?)",
-            (oi, price)
+            "INSERT INTO oi_snapshots (pair, open_interest, price) VALUES (?,?,?)",
+            (pair, oi, price)
         )
         # Prune older than 14 days
         await self._exec(
             "DELETE FROM oi_snapshots WHERE recorded_at < datetime('now','-14 days')"
         )
 
-    async def get_oi_ago(self, minutes: int) -> Optional[Tuple[float, float]]:
+    async def get_oi_ago(self, pair: str, minutes: int) -> Optional[Tuple[float, float]]:
         """Returns (open_interest, price) from N minutes ago."""
         return await self._fetch_one(
             "SELECT open_interest, price FROM oi_snapshots "
-            "WHERE recorded_at <= datetime('now', ? || ' minutes') "
+            "WHERE pair = ? AND recorded_at <= datetime('now', ? || ' minutes') "
             "ORDER BY recorded_at DESC LIMIT 1",
-            (f"-{minutes}",)
+            (pair, f"-{minutes}")
         )
 
     # ── Cooldowns ─────────────────────────────────────────────
@@ -273,12 +398,12 @@ class Database:
         )
         if not row:
             return False
-        from datetime import datetime
-        return datetime.fromisoformat(row[0]) > datetime.utcnow()
+        from datetime import datetime, timezone
+        return datetime.fromisoformat(row[0]) > datetime.now(timezone.utc).replace(tzinfo=None)
 
     async def set_cooldown(self, signal_hash: str, minutes: int = 60):
-        from datetime import datetime, timedelta
-        until = (datetime.utcnow() + timedelta(minutes=minutes)).isoformat()
+        from datetime import datetime, timedelta, timezone
+        until = (datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(minutes=minutes)).isoformat()
         await self._exec("""
             INSERT INTO signal_cooldowns (signal_hash, last_sent, cooldown_until)
             VALUES (?, CURRENT_TIMESTAMP, ?)

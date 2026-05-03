@@ -12,7 +12,7 @@ Rules:
 
 import logging
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -33,6 +33,31 @@ class LiquidityLevel:
     strength:    float     # touch_count × tf_weight
     mitigated:   bool
     distance_pct: float    # from current price, positive
+    level_score: int = 0   # NEW: 0-9 composite score
+    freshness_score: int = 0  # NEW: 0-10 freshness bonus
+
+    def __post_init__(self):
+        """Calculate level_score and freshness_score after initialization."""
+        # Freshness score: fewer touches = fresher = more reliable
+        # touches=3 → +7, touches=10 → 0, touches=20 → -10
+        self.freshness_score = max(0, 10 - self.touch_count)
+
+        # Level score: combines strength, touches, freshness, and timeframe weight
+        # 1D levels are 3× more significant than 4H levels (TF_WEIGHT)
+        tf_weight = TF_WEIGHT.get(self.timeframe, 1.0)
+
+        # Touches bonus (diminishing returns after 10)
+        touches_bonus = min(self.touch_count, 10)
+
+        # Stale penalty (too many touches = overused level)
+        stale_penalty = max(0, self.touch_count - 15)
+
+        self.level_score = int(
+            self.strength * tf_weight +  # Base strength scaled by timeframe weight
+            self.freshness_score +       # Freshness bonus
+            touches_bonus -              # Touches bonus (capped)
+            stale_penalty                # Stale penalty
+        )
 
     @property
     def is_above(self) -> bool:
@@ -41,7 +66,8 @@ class LiquidityLevel:
     def __str__(self) -> str:
         m = " [mitigated]" if self.mitigated else ""
         return (f"{self.timeframe} {self.pool_type} @ {self.price:.2f} "
-                f"(touches={self.touch_count}, str={self.strength:.1f}{m}, "
+                f"(touches={self.touch_count}, str={self.strength:.1f}, "
+                f"score={self.level_score}, fresh={self.freshness_score}{m}, "
                 f"dist={self.distance_pct*100:.2f}%)")
 
 

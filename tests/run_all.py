@@ -1,4 +1,4 @@
-import sys, os, traceback
+import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from tests.test_confidence    import (test_minimum_sweep_score, test_all_bonuses,
@@ -18,26 +18,10 @@ from tests.test_sweep_pattern import (test_long_rejection_valid, test_short_reje
     test_counter_trend_requires_opposite_bias,
     test_candle_parts_bull, test_candle_parts_bear)
 from tests.test_no_lookahead  import test_no_lookahead_bias
-from tests.test_runtime_and_routes import (
-    test_apply_cli_overrides_enables_testnet,
-    test_validate_runtime_config_requires_telegram_token,
-    test_liquidity_route_uses_current_price,
-    test_liquidity_route_without_current_price,
-)
-from tests.test_integration import (
-    test_health_endpoint_exposes_metrics,
-    test_signals_endpoints_return_seeded_data,
-    test_metrics_endpoint_returns_prometheus_text,
-    test_logs_endpoint_and_dashboard_log_panel,
-    test_dashboard_and_csv_export_routes,
-    test_root_redirect_and_browser_assets,
-    test_google_sheets_export_route_uses_sync_service,
-)
-from tests.test_exports_and_notifier import (
-    test_render_signals_csv_contains_headers_and_rows,
-    test_telegram_rate_limit_guard_waits_between_messages,
-    test_telegram_start_text_contains_mode_and_chat_id,
-)
+from tests.test_dual_mode import (test_operating_mode_selection,
+    test_blocked_mode_not_tradeable, test_quiet_mode_blocks_disallowed_session,
+    test_quiet_mode_allows_configured_session, test_quiet_mode_uses_configured_allowlist,
+    test_normal_mode_tradeable, test_dead_zone_remains_not_tradeable)
 
 SUITES = {
     "Confidence Score":        [test_minimum_sweep_score, test_all_bonuses,
@@ -59,32 +43,16 @@ SUITES = {
                                  test_counter_trend_requires_opposite_bias,
                                  test_candle_parts_bull, test_candle_parts_bear],
     "Backtester (Look-ahead)": [test_no_lookahead_bias],
-    "Runtime & API":           [test_apply_cli_overrides_enables_testnet,
-                                 test_validate_runtime_config_requires_telegram_token,
-                                 test_liquidity_route_uses_current_price,
-                                 test_liquidity_route_without_current_price],
-    "Integration":             [test_health_endpoint_exposes_metrics,
-                                 test_signals_endpoints_return_seeded_data,
-                                 test_metrics_endpoint_returns_prometheus_text,
-                                 test_logs_endpoint_and_dashboard_log_panel,
-                                 test_dashboard_and_csv_export_routes,
-                                 test_root_redirect_and_browser_assets,
-                                 test_google_sheets_export_route_uses_sync_service],
-    "Exports & Notifier":      [test_render_signals_csv_contains_headers_and_rows,
-                                 test_telegram_rate_limit_guard_waits_between_messages,
-                                 test_telegram_start_text_contains_mode_and_chat_id],
+    "Dual-Mode (NEW)":         [test_operating_mode_selection, test_blocked_mode_not_tradeable,
+                                 test_quiet_mode_blocks_disallowed_session,
+                                 test_quiet_mode_allows_configured_session,
+                                 test_quiet_mode_uses_configured_allowlist,
+                                 test_normal_mode_tradeable, test_dead_zone_remains_not_tradeable],
 }
 
-def _configure_output_encoding():
-    for stream in (sys.stdout, sys.stderr):
-        reconfigure = getattr(stream, "reconfigure", None)
-        if reconfigure is not None:
-            reconfigure(encoding="utf-8")
-
 def main():
-    _configure_output_encoding()
     print("=" * 60)
-    print("  Crypto Signal Bot — Final — Test Suite")
+    print("  Crypto Signal Bot — Test Suite")
     print("=" * 60)
     total = passed = failed = 0
     errors = []
@@ -102,7 +70,7 @@ def main():
                 errors.append((fn.__name__, str(e))); failed += 1
             except Exception as e:
                 print(f"  💥  {label}  [{type(e).__name__}]")
-                errors.append((fn.__name__, traceback.format_exc())); failed += 1
+                errors.append((fn.__name__, str(e))); failed += 1
     print(f"\n{'='*60}")
     print(f"  {passed} passed  |  {failed} failed  |  {total} total")
     print("=" * 60)

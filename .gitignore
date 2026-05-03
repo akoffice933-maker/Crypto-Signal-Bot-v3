@@ -1,0 +1,85 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Database
+*.db
+*.db-shm
+*.db-wal
+data/
+!data/__init__.py
+
+# Test artifacts
+.pytest_cache/
+tests/_tmp_*/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project specific
+web_server_stdin.tmp
+bot_final.zip
+*.docx
+
+# Temporary files
+tmp/
+temp/
+
+# Deployment files (user-specific)
+deploy/*.ps1
+deploy/*.sh
+deploy/*.md
+!deploy/README.md
+
+# Custom
+results/
+.qwen/

@@ -7,5 +7,5 @@ COPY . .
 RUN mkdir -p data logs results
 RUN useradd -m -u 1000 bot && chown -R bot:bot /app
 USER bot
-EXPOSE 8000
+EXPOSE 8001
 CMD ["python", "main.py", "--log-level=INFO"]

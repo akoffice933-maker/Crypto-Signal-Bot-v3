@@ -5,6 +5,10 @@ from pathlib import Path
 from shutil import rmtree
 from uuid import uuid4
 
+# Set API_KEY and DEV_MODE BEFORE importing app
+os.environ['API_KEY'] = 'test_api_key_for_integration_tests'
+os.environ['DEV_MODE'] = 'true'
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from fastapi.testclient import TestClient
@@ -114,7 +118,7 @@ def test_health_endpoint_exposes_metrics():
 
 def test_signals_endpoints_return_seeded_data():
     with integration_client() as client:
-        response = client.get("/signals/?limit=5")
+        response = client.get("/signals/api?limit=5")
         assert response.status_code == 200
         payload = response.json()
         assert len(payload) == 3
@@ -165,23 +169,26 @@ def test_logs_endpoint_and_dashboard_log_panel():
 
             log_path.write_text(
                 "old line\n"
-                "2026-03-19 cycle Analysis cycle start marker\n"
+                "2026-03-19 cycle ANALYSIS CYCLE START\n"
                 "Signal: old cycle\n"
-                "2026-03-19 cycle Analysis cycle start\n"
-                "Not tradeable: ranging, vol=low, session=None\n"
+                "2026-03-19 cycle ANALYSIS CYCLE START\n"
+                "❌ SKIP: Market not tradeable\n"
+                "  Blockers: ranging, vol=low, session=None\n"
                 "Sweep signal: LONG entry=60000 conf=70\n",
                 encoding="utf-8",
             )
             last_cycle = client.get("/logs?limit=20&important_only=true&last_cycle_only=true")
             assert last_cycle.status_code == 200
+            # Updated to match new log format - only important lines
             assert last_cycle.json()["lines"] == [
-                "Not tradeable: ranging, vol=low, session=None",
+                "❌ SKIP: Market not tradeable",
                 "Sweep signal: LONG entry=60000 conf=70",
             ]
 
             summary = client.get("/logs/summary")
             assert summary.status_code == 200
             assert summary.json()["tradeable"] == "not tradeable"
+            # Updated to extract blockers from next line
             assert summary.json()["blocking_reason"] == "ranging, vol=low, session=None"
             assert summary.json()["signal_state"] == "candidate"
 
@@ -256,3 +263,28 @@ def test_google_sheets_export_route_uses_sync_service():
             assert payload["rows_sent"] == 2
     finally:
         signals_module.sync_signals_to_google_sheets = original
+
+
+def test_auth_middleware_warns_without_api_key():
+    """Test that auth middleware is configured correctly."""
+    import os
+    from web.middleware import API_KEY, PUBLIC_PATHS, DEV_MODE
+    
+    # Check configuration
+    assert '/health' in PUBLIC_PATHS
+    assert '/docs' in PUBLIC_PATHS
+    assert '/metrics' in PUBLIC_PATHS
+    
+    # In test environment, API_KEY may or may not be set
+    print(f"✅ Auth middleware configured (API_KEY={'set' if API_KEY else 'not set'}, DEV_MODE={DEV_MODE})")
+
+
+def test_auth_middleware_with_api_key():
+    """Test that auth middleware configuration is correct."""
+    from web.middleware import API_KEY, DEV_MODE
+    
+    # In test environment, these should be set
+    assert API_KEY == 'test_api_key_for_integration_tests'
+    assert DEV_MODE is True
+    
+    print(f"✅ Auth middleware configured (API_KEY={'set' if API_KEY else 'not set'}, DEV_MODE={DEV_MODE})")

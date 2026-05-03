@@ -20,7 +20,7 @@ No upper cap.  Threshold for signal: ≥ 65.
 """
 
 from dataclasses import dataclass, field
-from typing import List, Optional, Tuple
+from typing import List, Optional
 
 
 @dataclass
@@ -63,6 +63,8 @@ def compute_confidence(
     cvd_divergence: Optional[str],         # bullish | bearish | None
     funding_rate: float,
     liquidation_cascade: bool,
+    level_freshness_score: int = 0,        # NEW: 0-10 freshness bonus
+    volume_spike_multiplier: Optional[float] = None,
 ) -> ConfidenceResult:
 
     result = ConfidenceResult(score=0)
@@ -74,10 +76,21 @@ def compute_confidence(
     elif strategy == "breakout":
         result.add("Squeeze breakout", +25)   # slightly less certain
 
+    # ── Freshness bonus (NEW) ─────────────────────────────────
+
+    if level_freshness_score >= 8:
+        result.add(f"Fresh level (score {level_freshness_score})", +10)
+    elif level_freshness_score >= 5:
+        result.add(f"Moderate level (score {level_freshness_score})", +5)
+    elif level_freshness_score <= 2:
+        result.add(f"Stale level (score {level_freshness_score})", -10)
+    # level_freshness_score 3-4 → no bonus/penalty (neutral)
+
     # ── Volume spike ──────────────────────────────────────────
 
     if volume_spike:
-        result.add("Volume spike ≥1.2×", +20)
+        vol_mult = volume_spike_multiplier if volume_spike_multiplier is not None else 1.2
+        result.add(f"Volume spike ≥{vol_mult:.2f}×", +20)
 
     # ── Session (once, no double-counting) ───────────────────
 

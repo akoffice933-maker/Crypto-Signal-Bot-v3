@@ -5,7 +5,6 @@ and return pd.Series or scalar.
 """
 
 import pandas as pd
-import numpy as np
 
 
 def directional_indices(

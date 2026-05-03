@@ -3,7 +3,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 import numpy as np
 import pandas as pd
+import logging
 
+from engine.logger import log_liquidity_filter_diagnostics, log_liquidity_levels
 from engine.liquidity_map import (
     _find_equal_levels,
     detect_levels,
@@ -174,6 +176,53 @@ def test_1d_preferred_over_4h():
     target = select_target_level(levels, current, "LONG", min_distance_pct=0.015)
     assert target.timeframe == "1d", f"Expected 1d, got {target.timeframe}"
     print(f"✅ 1D preferred over 4H: {target}")
+
+
+def test_log_liquidity_levels_accepts_dataclass_objects(caplog):
+    """Liquidity logger must handle LiquidityLevel dataclass objects used by the pipeline."""
+    level = _make_level("equal_highs", 61000, tf="1d", distance_pct=0.017, strength=9.0)
+
+    with caplog.at_level(logging.INFO):
+        log_liquidity_levels([level])
+
+    assert "Detected 1 liquidity levels" in caplog.text
+    assert "equal_highs" in caplog.text
+    assert "Top liquidity levels by quality" in caplog.text
+    assert "score:" in caplog.text
+
+
+def test_log_liquidity_filter_diagnostics_reports_pass_and_filtered(caplog):
+    strong = LiquidityLevel(
+        timeframe="1d",
+        pool_type="equal_highs",
+        price=61000,
+        touch_count=3,
+        strength=9.0,
+        mitigated=False,
+        distance_pct=0.02,
+    )
+    stale = LiquidityLevel(
+        timeframe="4h",
+        pool_type="equal_lows",
+        price=59000,
+        touch_count=22,
+        strength=22.0,
+        mitigated=False,
+        distance_pct=0.02,
+    )
+
+    with caplog.at_level(logging.INFO):
+        log_liquidity_filter_diagnostics(
+            operating_mode="quiet",
+            min_level_score=7,
+            levels=[strong, stale],
+            filtered_levels=[strong],
+        )
+
+    assert "Liquidity filter (QUIET): 1/2 levels pass level_score >= 7" in caplog.text
+    assert "Top eligible levels:" in caplog.text
+    assert "Top filtered-out levels:" in caplog.text
+    assert "stale_touch_gt15=1" in caplog.text
 
 
 if __name__ == "__main__":

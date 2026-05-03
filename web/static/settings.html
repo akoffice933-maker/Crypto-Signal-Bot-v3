@@ -193,12 +193,24 @@
           <div class="setting-value">Every 15 minutes</div>
         </div>
         <div class="setting-row">
-          <div class="setting-label">Confidence Threshold</div>
-          <div class="setting-value">${data.confidence_threshold || 65}%</div>
+          <div class="setting-label">Confidence Thresholds</div>
+          <div class="setting-value">NORMAL ${data.normal_confidence_threshold ?? 70}% / QUIET ${data.quiet_confidence_threshold ?? 60}%</div>
         </div>
         <div class="setting-row">
           <div class="setting-label">Min R:R</div>
-          <div class="setting-value">${data.min_rr || 2.0}</div>
+          <div class="setting-value">NORMAL ${data.normal_min_rr ?? 2.0} / QUIET ${data.quiet_min_rr ?? 1.5}</div>
+        </div>
+        <div class="setting-row">
+          <div class="setting-label">Volume Spike</div>
+          <div class="setting-value">NORMAL ${data.normal_volume_spike_multiplier ?? 1.2}x / QUIET ${data.quiet_volume_spike_multiplier ?? 1.1}x</div>
+        </div>
+        <div class="setting-row">
+          <div class="setting-label">ATR Modes</div>
+          <div class="setting-value">BLOCKED &lt; ${(data.quiet_atr_min ?? 0.002) * 100}% / QUIET &lt; ${(data.quiet_atr_max ?? 0.006) * 100}% / NORMAL ≥ ${(data.quiet_atr_max ?? 0.006) * 100}%</div>
+        </div>
+        <div class="setting-row">
+          <div class="setting-label">Quiet Sessions</div>
+          <div class="setting-value">${(data.quiet_allowed_sessions || []).join(", ") || "—"}</div>
         </div>
       `;
     }
